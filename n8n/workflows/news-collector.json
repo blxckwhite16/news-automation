@@ -1,0 +1,1819 @@
+[
+  {
+    "updatedAt": "2026-08-01T15:13:50.942Z",
+    "createdAt": "2026-07-31T05:19:53.876Z",
+    "name": "News Collector",
+    "description": null,
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "triggerAtHour": 8,
+                "triggerAtMinute": 30
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.3,
+        "position": [
+          -864,
+          -288
+        ],
+        "id": "e5d9c987-42e3-4ec7-a2fc-56ec5d025150",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          -480,
+          32
+        ],
+        "id": "b4894753-d920-4bea-a302-b61bab967ddc",
+        "name": "Loop Over Items"
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "YOUR_GOOGLE_SHEET_NAME",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "gid=0",
+            "mode": "list",
+            "cachedResultName": "Companies",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -672,
+          -96
+        ],
+        "id": "32f485c3-1e27-412e-8595-73414d4ac14f",
+        "name": "Get Company List",
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "function cleanHtml(value) {\n  if (!value) return '';\n\n  return String(value)\n    .replace(/<[^>]*>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nconst article = $input.item.json;\nconst company = $('Build Naver Query').item.json;\n\nreturn {\n  json: {\n    title: cleanHtml(article.items.title),\n    url: article.items.link,\n    published_at: article.items.pubDate,\n    description: cleanHtml(article.items.description),\n\n    source: '',\n\n    company_name: company.company_name,\n    ticker: company.ticker,\n    industry: company.industry,\n    aliases: company.aliases,\n    query: company.query\n  }\n};"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -688,
+          240
+        ],
+        "id": "425bbbec-c12b-4448-bcbf-6163d987a613",
+        "name": "Clean Article Data"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\n\nconst results = [];\n\n\n// 중요도 키워드 정의\nconst keywordGroups = {\n  finance: [\n    ['실적', 5],\n    ['영업이익', 5],\n    ['매출', 5],\n    ['순이익', 5],\n    ['흑자', 4],\n    ['적자', 4]\n  ],\n\n  business: [\n    ['투자', 5],\n    ['인수', 5],\n    ['m&a', 5],\n    ['공급계약', 5],\n    ['수주', 4],\n    ['계약', 4],\n    ['신사업', 4],\n    ['사업 확대', 4],\n    ['진출', 3],\n    ['확대', 2]\n  ],\n\n  technology: [\n    ['hbm', 5],\n    ['ai', 3],\n    ['반도체', 3],\n    ['파운드리', 4],\n    ['갤럭시', 3],\n    ['신제품', 3],\n    ['출시', 3],\n    ['개발', 2]\n  ],\n\n  trend: [\n    ['친환경', 3],\n    ['탄소', 3],\n    ['에너지', 3],\n    ['전기', 2],\n    ['히트펌프', 3],\n    ['탈석유', 3]\n  ],\n\n  market: [\n    ['주가', 3],\n    ['폭등', 4],\n    ['급등', 4],\n    ['급락', 4],\n    ['사이드카', 4],\n    ['증시', 2]\n  ],\n\n  low: [\n    ['광고', 1],\n    ['행사', 1],\n    ['캠페인', 1],\n    ['인터뷰', 1]\n  ]\n};\n\n\nconst keywords = Object.values(keywordGroups).flat();\n\n\nfor (const item of items) {\n\n  const data = item.json;\n\n  const text = `\n    ${data.title || ''}\n    ${data.description || ''}\n  `.toLowerCase();\n\n\n  let score = 0;\n  let reasons = [];\n\n\n  for (const [keyword, value] of keywords) {\n\n    if (text.includes(keyword.toLowerCase())) {\n      score += value;\n      reasons.push(keyword);\n    }\n\n  }\n\n\n  results.push({\n    json: {\n      ...data,\n\n      // 최대 10점 제한\n      importance_score: Math.min(score, 10),\n\n      // 판단 근거\n      importance_reason: [...new Set(reasons)].join(', ')\n    }\n  });\n\n}\n\n\nreturn results;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          144,
+          528
+        ],
+        "id": "f99a5d5c-75c5-438b-8afb-c43489dc2de0",
+        "name": "Calculate News Importance"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\n\nconst results = [];\n\nconst contextKeywords = [\n  '실적',\n  '매출',\n  '영업이익',\n  '순이익',\n  '계약',\n  '수주',\n  '공급',\n  '출시',\n  '신제품',\n  '제품',\n  '투자',\n  '인수',\n  '합병',\n  'M&A',\n  '자사주',\n  '배당',\n  '공시',\n  '전망',\n  '규제',\n  '소송',\n  '리콜',\n  '개발',\n  '생산',\n  '공장',\n  '증설',\n  'CEO',\n  '임원',\n  '대표'\n];\n\nfor (const item of items) {\n\n  const data = item.json;\n\n  const aliases = (data.aliases || '')\n    .split(',')\n    .map(a => a.trim())\n    .filter(Boolean);\n\n  const nameAliases = aliases.filter(alias => !/^\\d+$/.test(alias));\n  const tickerAlias = aliases.find(alias => /^\\d+$/.test(alias));\n\n  const title = data.title || '';\n  const description = data.description || '';\n\n  const text = `${title} ${description}`;\n\n  // 기업명 매칭\n  const nameMatch = nameAliases.some(alias =>\n    text.includes(alias)\n  );\n\n  // 종목코드 매칭\n  const tickerMatch = tickerAlias\n    ? text.includes(tickerAlias)\n    : false;\n\n  // 제목에 기업명 있으면 높은 관련성\n  const titleMatch = nameAliases.some(alias =>\n    title.includes(alias)\n  );\n\n  // 이벤트 키워드 존재 여부\n  const contextMatch = contextKeywords.some(keyword =>\n    text.includes(keyword)\n  );\n\n  /*\n    관련성 판단 기준\n\n    1) 제목에 기업명 존재\n       → 거의 확실한 기업 기사\n\n    2) 본문에 기업명 + 이벤트 키워드 존재\n       → 주요 뉴스 가능성\n\n    3) 종목코드 직접 언급\n       → 금융 뉴스 보완\n  */\n  const isRelevant =\n    titleMatch ||\n    (nameMatch && contextMatch) ||\n    tickerMatch;\n\n  if (isRelevant) {\n\n    results.push({\n      json: {\n        ...data,\n        relevance_matched_by: titleMatch\n          ? 'title'\n          : tickerMatch\n            ? 'ticker'\n            : 'name_context'\n      }\n    });\n\n  }\n}\n\n// ▼ 신규 추가 (관련 기사 0건 처리)\nif (results.length === 0) {\n  return [\n    {\n      json: {\n        result_type: 'NO_RELEVANT_ARTICLES',\n        company_name: items[0]?.json?.company_name,\n        ticker: items[0]?.json?.ticker\n      }\n    }\n  ];\n}\n\nreturn results;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -256,
+          240
+        ],
+        "id": "45f9c254-ee0b-4e62-8fe1-6d64bd43fb77",
+        "name": "Filter Relevant    Articles"
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "YOUR_GOOGLE_SHEET_NAME",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 212703029,
+            "mode": "list",
+            "cachedResultName": "Raw_News",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=212703029"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -672,
+          -288
+        ],
+        "id": "e06eb4d3-2a55-471b-9fee-aef2343c77ca",
+        "name": "Search Existing News",
+        "alwaysOutputData": true,
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "function normalizeUrl(url) {\n  try {\n    const u = new URL(url);\n    u.search = '';\n    u.hash = '';\n    return u.toString().replace(/\\/$/, '');\n  } catch (e) {\n    return url;\n  }\n}\n\n// 간단한 문자열 해시 함수\nfunction createHash(str) {\n  let hash = 0;\n\n  for (let i = 0; i < str.length; i++) {\n    const char = str.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash = hash & hash;\n  }\n\n  return String(Math.abs(hash));\n}\n\n// 기존 Raw_News 조회\nconst existingRows = $('Search Existing News').all();\n\nconsole.log(\"existing count:\", existingRows.length);\n\n// 기존 article_id 목록\nconst existingIds = new Set(\n  existingRows\n    .map(item => item.json?.article_id)\n    .filter(Boolean)\n    .map(String)\n);\n\n// 현재 입력 기사\nconst items = $input.all();\n\nconst results = [];\n\nfor (const item of items) {\n\n  // 빈 item 방어\n  if (!item.json || !item.json.url) {\n    continue;\n  }\n\n  const url = item.json.url;\n\n  const normalizedUrl = normalizeUrl(url);\n\n  const articleId = createHash(normalizedUrl);\n\n  // 기존 기사면 제외\n  if (existingIds.has(String(articleId))) {\n    continue;\n  }\n\n  results.push({\n    json: {\n      ...item.json,\n      article_id: articleId,\n      normalized_url: normalizedUrl\n    }\n  });\n}\n\n// 빈 객체 방지\nconst finalResults = results.filter(item => item.json && item.json.article_id);\n\nif (finalResults.length === 0) {\n  return [{\n    json: {\n      result_type: 'NO_NEW_ARTICLES',\n      company_name: items[0]?.json?.company_name,\n      ticker: items[0]?.json?.ticker,\n      article_relevant: items.length,\n      article_duplicate: items.length\n    }\n  }];\n}\n\nfinalResults.forEach(r => {\n  r.json.article_relevant = items.length;\n  r.json.article_duplicate = items.length - finalResults.length;\n});\n\nreturn finalResults;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          144,
+          256
+        ],
+        "id": "3ba6dcd8-55cb-4200-9fa9-9f51b72baff9",
+        "name": "Check New Articles"
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "YOUR_GOOGLE_SHEET_NAME",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 212703029,
+            "mode": "list",
+            "cachedResultName": "Raw_News",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=212703029"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "company_name": "={{ $json.company_name }}",
+              "published_at": "={{ $json.published_at }}",
+              "description": "={{ $json.description }}",
+              "source": "={{ $json.source }}",
+              "article_id": "={{ $json.article_id }}",
+              "url": "={{ $json.url }}",
+              "ticker": "={{ $json.ticker }}",
+              "industry": "={{ $json.industry }}",
+              "title": "={{ $json.title }}",
+              "collected_at": "={{ $now.toISO() }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "article_id",
+                "displayName": "article_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "company_name",
+                "displayName": "company_name",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "ticker",
+                "displayName": "ticker",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "industry",
+                "displayName": "industry",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "title",
+                "displayName": "title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "description",
+                "displayName": "description",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "source",
+                "displayName": "source",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "published_at",
+                "displayName": "published_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "collected_at",
+                "displayName": "collected_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "url",
+                "displayName": "url",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -464,
+          464
+        ],
+        "id": "a324abd7-cf31-4a8a-8a2f-9912880390b3",
+        "name": "Save Raw News",
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const item = $input.item.json;\n\nif (!$execution.customData.get('run_started_at')) {\n  $execution.customData.set('run_started_at', new Date().toISOString());\n}\n\nconst aliases = (item.aliases || '').split(',').map(a => a.trim()).filter(Boolean);\nreturn aliases.map(alias => ({ json: { ...item, query: alias } }));"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -256,
+          48
+        ],
+        "id": "dd3c3473-315b-4cf4-844d-490fc0592879",
+        "name": "Build Naver Query"
+      },
+      {
+        "parameters": {
+          "jsCode": "const seen = new Set();\n\nreturn items.filter(item => {\n  const url = item.json.url;\n\n  if (!url) return false;\n\n  if (seen.has(url)) {\n    return false;\n  }\n\n  seen.add(url);\n  return true;\n});"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -480,
+          240
+        ],
+        "id": "953cd766-efbf-42b8-9a1f-fd0e54ce99b7",
+        "name": "Deduplicate Current Run"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "const raw = $input.item.json;\nconst input = $('Split Out High Importance').item.json;\n\nconst ALLOWED_CATEGORY = [\n  'EARNINGS',\n  'CONTRACT',\n  'PRODUCT',\n  'POLICY',\n  'LAWSUIT',\n  'MNA',\n  'MANAGEMENT',\n  'SECURITY',\n  'MACRO',\n  'OTHER',\n];\n\nconst ALLOWED_SENTIMENT = [\n  'POSITIVE',\n  'NEGATIVE',\n  'NEUTRAL',\n  'UNKNOWN',\n];\n\ntry {\n  if (raw.error) {\n    throw new Error(`Gemini API error: ${raw.error}`);\n  }\n\n  const responseText = raw.content?.parts?.[0]?.text;\n\n  if (!responseText) {\n    throw new Error('Gemini response text is missing');\n  }\n\n  const parsed = JSON.parse(responseText);\n\n  if (\n    !ALLOWED_CATEGORY.includes(parsed.category) ||\n    !ALLOWED_SENTIMENT.includes(parsed.sentiment)\n  ) {\n    throw new Error(\n      `invalid category=\"${parsed.category}\" or sentiment=\"${parsed.sentiment}\"`\n    );\n  }\n\n  return {\n    json: {\n      industry: input.industry,\n      company_name: input.company_name,\n      ticker: input.ticker,\n      importance: input.importance_score,\n\n      category: parsed.category,\n      sentiment: parsed.sentiment,\n\n      title: input.title,\n      ai_summary: parsed.ai_summary,\n      keywords: Array.isArray(parsed.keywords)\n        ? parsed.keywords.join(', ')\n        : '',\n      reasoning: parsed.reasoning,\n\n      published_at: input.published_at,\n      url: input.url,\n      article_id: input.article_id,\n      analyzed_at: new Date().toISOString(),\n\n      article_relevant: input.article_relevant ?? 0,\n      article_duplicate: input.article_duplicate ?? 0,\n      article_saved: input.article_saved ?? 0,\n      article_analyzed: input.article_analyzed ?? 0,\n\n      is_control_item: false,\n    },\n  };\n} catch (error) {\n  return {\n    json: {\n      is_control_item: true,\n      result_type: 'COMPLETED',\n\n      company_name: input.company_name,\n      ticker: input.ticker,\n\n      article_relevant: input.article_relevant ?? 0,\n      article_duplicate: input.article_duplicate ?? 0,\n      article_saved: input.article_saved ?? 0,\n      article_analyzed: input.article_analyzed ?? 0,\n\n      error_message: error.message,\n    },\n  };\n}"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -464,
+          784
+        ],
+        "id": "ae4acd2e-48f1-45cc-b075-0b06e466167f",
+        "name": "Parse Gemini Response"
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "list",
+            "cachedResultName": "YOUR_GOOGLE_SHEET_NAME",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 38584058,
+            "mode": "list",
+            "cachedResultName": " AI_Analysis ",
+            "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=38584058"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "industry": "={{ $json.industry }}",
+              "company_name": "={{ $json.company_name }}",
+              "ticker": "={{ $json.ticker }}",
+              "importance": "={{ $json.importance }}",
+              "category": "={{ $json.category }}",
+              "sentiment": "={{ $json.sentiment }}",
+              "title": "={{ $json.title }}",
+              "ai_summary": "={{ $json.ai_summary }}",
+              "keywords": "={{ $json.keywords }}",
+              "reasoning": "={{ $json.reasoning }}",
+              "published_at": "={{ $json.published_at }}",
+              "url": "={{ $json.url }}",
+              "article_id": "={{ $json.article_id }}",
+              "analyzed_at": "={{ $json.analyzed_at }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "industry",
+                "displayName": "industry",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "company_name",
+                "displayName": "company_name",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "ticker",
+                "displayName": "ticker",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "importance",
+                "displayName": "importance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "category",
+                "displayName": "category",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "sentiment",
+                "displayName": "sentiment",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "title",
+                "displayName": "title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "ai_summary",
+                "displayName": "ai_summary",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "keywords",
+                "displayName": "keywords",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "reasoning",
+                "displayName": "reasoning",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "published_at",
+                "displayName": "published_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "url",
+                "displayName": "url",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "article_id",
+                "displayName": "article_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "analyzed_at",
+                "displayName": "analyzed_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -464,
+          944
+        ],
+        "id": "42e9bcf9-0ebb-444c-b3de-999157c5cb50",
+        "name": "Save  AI_Analysis ",
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "items",
+          "include": "allOtherFields",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitOut",
+        "typeVersion": 1,
+        "position": [
+          144,
+          32
+        ],
+        "id": "29e1dce7-c6a0-4cd1-865d-7ec269f85e9a",
+        "name": "Split Search Results"
+      },
+      {
+        "parameters": {
+          "url": "=https://naverapihub.apigw.ntruss.com/search/v1/news",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpCustomAuth",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "query",
+                "value": "={{$json.query}}"
+              },
+              {
+                "name": "display",
+                "value": "5"
+              },
+              {
+                "name": "start",
+                "value": "1"
+              },
+              {
+                "name": "sort",
+                "value": "date"
+              },
+              {
+                "name": "format",
+                "value": "json"
+              }
+            ]
+          },
+          "options": {
+            "redirect": {
+              "redirect": {}
+            }
+          }
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [
+          -48,
+          48
+        ],
+        "id": "2c4dbf7d-3428-4f64-bb4f-18887a3d9ab6",
+        "name": "Fetch Naver News",
+        "credentials": {
+          "httpCustomAuth": {
+            "id": "NaverApiHeaderAuth1",
+            "name": "NAVER Search API Header Auth"
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-3.5-flash-lite",
+            "mode": "list",
+            "cachedResultName": "models/gemini-3.5-flash-lite"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "=당신은 금융 및 산업 뉴스를 구조화하는 AI Analyst입니다.\n\n목표는 사람이 읽는 보고서를 작성하는 것이 아니라, Google Sheets에 저장할 구조화된 JSON 데이터를 생성하는 것입니다.\n\n아래 기사 정보를 분석하여 반드시 JSON만 출력하세요.\n\n# 기사 정보\n\n회사명\n{{ $json.company_name || '' }}\n\n산업\n{{ $json.industry || '' }}\n\n제목\n{{ $json.title || '' }}\n\n본문\n{{ $json.description || '' }}\n\n--------------------------------------------------\n\n분석 규칙\n\n1. ai_summary\n\n- 기사 제목과 본문에 명시된 사실만 1~2문장으로 요약하세요.\n- 원문에 없는 배경, 원인, 결과를 추가하지 마세요.\n- 기사 제목의 자극적 표현이나 구어체는 사용하지 말고 중립적인 비즈니스 문장으로 작성하세요.\n- 금액, 수치, 단위, 기업명, 인물명은 원문에 있는 경우 그대로 유지하세요.\n- 본문 정보가 부족하면 제목을 자연스럽게 정리하는 수준까지만 작성하세요.\n\n--------------------------------------------------\n\n2. category\n\n다음 enum 중 정확히 하나만 선택하세요.\n\n- EARNINGS\n- CONTRACT\n- PRODUCT\n- POLICY\n- LAWSUIT\n- MNA\n- MANAGEMENT\n- SECURITY\n- MACRO\n- OTHER\n\n분류 기준\n\n- EARNINGS : 실적, 매출, 영업이익, 순이익\n- CONTRACT : 공급계약, 수주, 납품계약, 판매계약, MOU, 업무협약, 전략적 제휴, 공동개발 협력 등 기업 간 계약 또는 협력\n- PRODUCT : 신제품, 기술개발, 서비스 출시\n- POLICY : 정부 정책, 규제, 법안\n- LAWSUIT : 소송, 분쟁, 법적 조치\n- MNA : 인수, 합병, 지분 인수\n- MANAGEMENT : 경영진 변경, 조직개편, 인사\n- SECURITY : 보안사고, 개인정보 유출\n- MACRO : 거시경제, 산업 전반 동향\n- OTHER : 위 어느 것에도 해당하지 않는 경우\n\n목록에 없는 category를 생성하지 마세요.\n\n--------------------------------------------------\n\n3. sentiment\n\n다음 enum 중 정확히 하나만 선택하세요.\n\n- POSITIVE\n- NEGATIVE\n- NEUTRAL\n- UNKNOWN\n\n판단 기준\n\n- 기사에 명시적인 긍정 내용이 있으면 POSITIVE\n- 기사에 명시적인 부정 내용이 있으면 NEGATIVE\n- 방향성이 명확하지 않으면 NEUTRAL\n- 제목과 본문만으로 방향성을 판단하기 어려우면 UNKNOWN\n\n추측하지 마세요.\n\n--------------------------------------------------\n\n4. keywords\n\n- 기사에 실제 등장하는 핵심 키워드만 추출하세요.\n- 새로운 키워드를 만들지 마세요.\n- 최대 5개까지 작성하세요.\n\n--------------------------------------------------\n\n5. reasoning\n\n- category와 sentiment를 그렇게 분류한 근거를 1~2문장으로 작성하세요.\n- 제목과 본문에 있는 표현만 근거로 작성하세요.\n- 사업 전망, 시장 영향, 투자 의견을 작성하지 마세요.\n- summary를 반복하지 마세요.\n\n--------------------------------------------------\n\n사실성 규칙 (반드시 준수)\n\n- 입력에 명시되지 않은 정보는 절대 생성하지 마세요.\n- 기사에 없는 숫자, 기업명, 사업부명, 인물명, 날짜를 추가하지 마세요.\n- 기사에 없는 원인이나 결과를 추론하지 마세요.\n- 기사에 없는 시장 전망이나 투자 의견을 생성하지 마세요.\n- 정보가 부족하면 추론하지 말고 확인 가능한 사실만 작성하세요.\n- 사실보다 자연스러운 문장을 우선하지 말고 사실의 정확성을 최우선으로 하세요.\n\n--------------------------------------------------\n\n기사 제목과 본문이 모두 비어 있다면 아래 JSON을 출력하세요.\n\n{\n  \"ai_summary\": \"\",\n  \"category\": \"OTHER\",\n  \"sentiment\": \"UNKNOWN\",\n  \"keywords\": [],\n  \"reasoning\": \"\"\n}\n\n--------------------------------------------------\n\n출력 규칙\n\n- 반드시 JSON 객체 하나만 출력하세요.\n- Markdown 코드블록을 사용하지 마세요.\n- 설명, 인사말, 부가 문장을 출력하지 마세요.\n- 반드시 유효한 JSON 형식이어야 합니다.\n- 문자열 안에 줄바꿈 문자를 포함하지 마세요.\n\n반드시 아래 스키마를 사용하세요.\n\n{\n  \"ai_summary\": \"...\",\n  \"category\": \"...\",\n  \"sentiment\": \"...\",\n  \"keywords\": [\n    \"...\",\n    \"...\"\n  ],\n  \"reasoning\": \"...\"\n}"
+              }
+            ]
+          },
+          "builtInTools": {},
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.2,
+        "position": [
+          -800,
+          784
+        ],
+        "id": "fa84f2d2-1e9a-41ec-ba89-6437e4351246",
+        "name": "Analyze News with Gemini",
+        "credentials": {
+          "googlePalmApi": {
+            "id": "AcuVud7VrO0Db3s5",
+            "name": "Google Gemini(PaLM) Api account"
+          }
+        },
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst first = items[0]?.json || {};\n\nlet articleAnalysisSuccess = first.article_analysis_success ?? 0;\nconst articleRelevant = first.article_relevant ?? 0;\nconst articleDuplicate = first.article_duplicate ?? 0;\nconst articleSaved = first.article_saved ?? 0;\nconst articleAnalyzed = first.article_analyzed ?? first.__analyzed_total ?? 0;\n\nlet resultType = first.result_type;\n\nif (!resultType) {\n  articleAnalysisSuccess = items.length;\n  resultType = 'COMPLETED';\n}\n\nconst articleFailed = Math.max(0, articleAnalyzed - articleAnalysisSuccess);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: resultType,\n\n      company_name: first.company_name,\n      ticker: first.ticker,\n      run_started_at: $execution.customData.get('run_started_at') || null,\n\n      company_failed: first.company_failed ?? 0,\n\n      article_relevant: articleRelevant,\n      article_duplicate: articleDuplicate,\n      article_saved: articleSaved,\n      article_analyzed: articleAnalyzed,\n      article_analysis_success: articleAnalysisSuccess,\n      article_failed: articleFailed,\n\n      error_message: first.error_message ?? null\n    }\n  }\n];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          752,
+          1216
+        ],
+        "id": "f82503fa-cd73-4db6-a616-2cab8030e4ef",
+        "name": "Build Company Summary"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst valid = items.filter(i => !i.json.is_control_item);\nconst first = items[0]?.json || {};\n\nif (valid.length === 0) {\n  return [\n    {\n      json: {\n        result_type: \"COMPLETED\",\n        company_name: first.company_name,\n        ticker: first.ticker,\n        company_failed: 0,\n        article_analyzed: items.length,\n        article_analysis_success: 0,\n        error_message: first.error_message || null,\n      },\n    },\n  ];\n}\n\nreturn valid.map((v) => ({\n  json: {\n    ...v.json,\n    __analyzed_total: items.length,\n  },\n}));"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -256,
+          784
+        ],
+        "id": "4b71be24-a8ad-4fd3-af00-be3439aab684",
+        "name": "Count Analyzed Success"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "59feadbc-ef28-41c0-bbf0-bbffd52db891",
+                "leftValue": "={{ $json.article_analysis_success }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          -48,
+          784
+        ],
+        "id": "bcb28538-86cd-4d38-924d-4a0ff9663ccc",
+        "name": "IF: Is Fallback Summary?"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "2299aedf-c12c-4933-bccf-040ad943905c",
+                "leftValue": "={{ $json.result_type }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          -48,
+          240
+        ],
+        "id": "d2fbde7b-bc54-426a-a2af-d19517bda222",
+        "name": "IF: No Relevant Articles?"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "105b6104-2641-428f-8972-0d66e612e353",
+                "leftValue": "={{ $json.result_type }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          336,
+          256
+        ],
+        "id": "fbfed791-9d03-4d4c-b75d-ba3eca1e8bde",
+        "name": "IF: No New Articles?"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\n\nconst threshold = 5;\n\nconst high = items.filter(\n  i => (i.json.importance_score || 0) > threshold\n);\n\nconst low = items.filter(\n  i => (i.json.importance_score || 0) <= threshold\n);\n\nreturn [{\n  json: {\n    company_name: items[0]?.json?.company_name,\n    ticker: items[0]?.json?.ticker,\n\n    saved_count: items.length,\n    low_importance_count: low.length,\n\n    article_relevant:\n      items[0]?.json?.article_relevant ?? 0,\n\n    article_duplicate:\n      items[0]?.json?.article_duplicate ?? 0,\n\n    high: high.map(i => ({\n      ...i.json,\n      article_saved: items.length,\n      article_analyzed: high.length\n    })),\n\n    result_type: 'NO_HIGH_IMPORTANCE_ARTICLES',\n\n    company_failed: 0,\n    article_saved: items.length,\n    article_analyzed: 0,\n    article_analysis_success: 0,\n    article_failed: 0,\n    error_message: null\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          352,
+          608
+        ],
+        "id": "f981d234-f03b-4e2f-98f1-7c3baea1c512",
+        "name": "Prepare Importance Routing"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "40a9085e-1665-482a-b5ec-c8949567c8d6",
+                "leftValue": "={{ $json.high.length }}",
+                "rightValue": 0,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          544,
+          608
+        ],
+        "id": "5a7edcf8-7108-4861-842c-1525549a4b84",
+        "name": "IF: Has High Importance?"
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "high",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitOut",
+        "typeVersion": 1,
+        "position": [
+          752,
+          592
+        ],
+        "id": "b7119125-de8c-4f45-b42c-98a9d86e2434",
+        "name": "Split Out High Importance"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 1 . Initialization\n\n• Load reference data\n• Load company list"
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          -112
+        ],
+        "id": "8167c25c-73f5-4967-a944-88a39ccbc692",
+        "name": "Sticky Note"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 2. News Collection\n\n• Search NAVER News\n• Collect search results",
+          "color": 2
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          64
+        ],
+        "id": "9f42755f-a84a-4c47-8779-f6cfd8a1675e",
+        "name": "Sticky Note1"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 3. Data Validation\n\n• Clean data \n• Remove duplicates\n• Identify new articles",
+          "color": 4
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          240
+        ],
+        "id": "5ed31fac-4331-4c4d-b9ed-671f30ff9ef6",
+        "name": "Sticky Note2"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 4. Prioritization\n• Save raw news\n• Calculate imporance\n• Route high-priority articles",
+          "color": 5
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          416
+        ],
+        "id": "b668d8f0-8c8b-4bd0-ac1c-4815a5461ec7",
+        "name": "Sticky Note3"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 5. AI Analysis\n• Gemini analysis\n• Parse response\n• Handle fallback",
+          "color": 3
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          592
+        ],
+        "id": "dd1596a7-2822-411f-8be9-d853d4717b09",
+        "name": "Sticky Note4"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst seenArticleIds = new Set();\n\nfor (const item of items) {\n  const articleId = item.json?.article_id;\n\n  if (!articleId) {\n    throw new Error(\n      'Validation failed: missing article_id in item entering Save Raw News fork'\n    );\n  }\n\n  const normalizedArticleId = String(articleId);\n\n  if (seenArticleIds.has(normalizedArticleId)) {\n    throw new Error(\n      `Validation failed: duplicate article_id (${normalizedArticleId}) entering Save Raw News fork`\n    );\n  }\n\n  seenArticleIds.add(normalizedArticleId);\n}\n\nreturn items;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -464,
+          624
+        ],
+        "id": "9b29bca2-e19b-4a06-9d16-812da721b6c6",
+        "name": "Keep Raw News Context"
+      },
+      {
+        "parameters": {
+          "mode": "combine",
+          "fieldsToMatchString": "article_id",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          -256,
+          528
+        ],
+        "id": "68a305dd-0bf3-44d6-af9d-b99882addad9",
+        "name": "Merge Raw News Context"
+      },
+      {
+        "parameters": {
+          "jsCode": "const mergedItems = $input.all();\n\nlet saveItems;\n\ntry {\n  saveItems = $('Save Raw News').all();\n} catch (error) {\n  throw new Error(\n    `Validate Raw News Merge: Save Raw News 출력을 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst saveSuccessCount = saveItems.length;\nconst mergeOutputCount = mergedItems.length;\n\nconst mergedIds = new Set(\n  mergedItems\n    .map((item) => item.json?.article_id)\n    .filter((articleId) => articleId !== undefined && articleId !== null && articleId !== '')\n    .map(String)\n);\n\nconst saveIds = saveItems\n  .map((item) => item.json?.article_id)\n  .filter((articleId) => articleId !== undefined && articleId !== null && articleId !== '')\n  .map(String);\n\nconst missingIds = saveIds.filter(\n  (articleId) => !mergedIds.has(articleId)\n);\n\nif (mergeOutputCount !== saveSuccessCount) {\n  throw new Error(\n    `Validate Raw News Merge 불일치: ` +\n    `저장 성공 건수=${saveSuccessCount}, ` +\n    `Merge 출력 건수=${mergeOutputCount}, ` +\n    `건수 차이=${saveSuccessCount - mergeOutputCount}, ` +\n    `누락된 article_id=[${missingIds.join(', ')}], ` +\n    `오류 발생 구간=Save Raw News -> Merge Raw News Context`\n  );\n}\n\nreturn mergedItems;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -48,
+          528
+        ],
+        "id": "df69ee1f-8ed6-41de-a856-c5397f51902f",
+        "name": "Validate Raw News Merge"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst seenArticleIds = new Set();\n\nfor (const item of items) {\n  const articleId = item.json?.article_id;\n\n  if (!articleId) {\n    throw new Error(\n      'Validation failed: missing article_id in item entering Save AI_Analysis fork'\n    );\n  }\n\n  const normalizedArticleId = String(articleId);\n\n  if (seenArticleIds.has(normalizedArticleId)) {\n    throw new Error(\n      `Validation failed: duplicate article_id (${normalizedArticleId}) entering Save AI_Analysis fork`\n    );\n  }\n\n  seenArticleIds.add(normalizedArticleId);\n}\n\nreturn items;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -464,
+          1104
+        ],
+        "id": "fefeb463-a74c-4e3c-b792-a33d467210b8",
+        "name": "Keep AI Analysis Context"
+      },
+      {
+        "parameters": {
+          "jsCode": "const mergedItems = $input.all();\n\nlet saveItems;\n\ntry {\n  saveItems = $('Save  AI_Analysis ').all();\n} catch (error) {\n  throw new Error(\n    `Validate AI Analysis Merge: Save AI_Analysis 출력을 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst saveSuccessCount = saveItems.length;\nconst mergeOutputCount = mergedItems.length;\n\nconst mergedIds = new Set(\n  mergedItems\n    .map((item) => item.json?.article_id)\n    .filter(\n      (articleId) =>\n        articleId !== undefined &&\n        articleId !== null &&\n        articleId !== ''\n    )\n    .map(String)\n);\n\nconst saveIds = saveItems\n  .map((item) => item.json?.article_id)\n  .filter(\n    (articleId) =>\n      articleId !== undefined &&\n      articleId !== null &&\n      articleId !== ''\n  )\n  .map(String);\n\nconst missingIds = saveIds.filter(\n  (articleId) => !mergedIds.has(articleId)\n);\n\nif (mergeOutputCount !== saveSuccessCount) {\n  throw new Error(\n    `Validate AI Analysis Merge 불일치: ` +\n    `저장 성공 건수=${saveSuccessCount}, ` +\n    `Merge 출력 건수=${mergeOutputCount}, ` +\n    `건수 차이=${saveSuccessCount - mergeOutputCount}, ` +\n    `누락된 article_id=[${missingIds.join(', ')}], ` +\n    `오류 발생 구간=Save AI_Analysis -> Merge AI Analysis Context`\n  );\n}\n\nreturn mergedItems;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -48,
+          1008
+        ],
+        "id": "1d397e8b-f269-433e-992e-c98f29b8bc95",
+        "name": "Validate AI Analysis Merge"
+      },
+      {
+        "parameters": {
+          "mode": "combine",
+          "fieldsToMatchString": "article_id",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          -256,
+          1008
+        ],
+        "id": "860c3705-1821-4ba1-ab0f-bd2e82871e15",
+        "name": "Merge AI Analysis Context"
+      },
+      {
+        "parameters": {
+          "jsCode": "const errorItems = $input.all();\n\nlet company;\n\ntry {\n  company = $('Loop Over Items').item.json;\n} catch (error) {\n  throw new Error(\n    `Tag: Save AI_Analysis Failed에서 현재 회사 정보를 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'COMPLETED',\n\n      company_name: company.company_name,\n      ticker: company.ticker,\n\n      company_failed: 0,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: errorItems.length,\n\n      error_message:\n        `Save AI_Analysis failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          448,
+          1216
+        ],
+        "id": "00d2118b-1b26-4251-a496-9d30be857ab8",
+        "name": "Tag: Save AI_Analysis Failed"
+      },
+      {
+        "parameters": {
+          "jsCode": "const errorItems = $input.all();\n\nlet company;\n\ntry {\n  company = $('Loop Over Items').item.json;\n} catch (error) {\n  throw new Error(\n    `Tag: Company Failed에서 현재 회사 정보를 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst firstErrorItem = errorItems[0]?.json || {};\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'FAILED',\n\n      company_name:\n        firstErrorItem.company_name ||\n        company.company_name,\n\n      ticker:\n        firstErrorItem.ticker ||\n        company.ticker,\n\n      company_failed: 1,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: 0,\n\n      error_message:\n        `Save Raw News failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -32,
+          1216
+        ],
+        "id": "62797a27-bee7-4b84-957d-5c1b3f64f2a2",
+        "name": "Tag: Company Failed"
+      },
+      {
+        "parameters": {
+          "jsCode": "const company = $('Loop Over Items').item.json;\n\nlet errorMessage;\nif ($json.error && typeof $json.error === 'object' && typeof $json.error.message === 'string') {\n  errorMessage = $json.error.message;\n} else if (typeof $json.message === 'string') {\n  errorMessage = $json.message;\n} else if (typeof $json.error === 'string') {\n  errorMessage = $json.error;\n} else if ($json.error !== undefined && $json.error !== null) {\n  try {\n    errorMessage = JSON.stringify($json.error);\n  } catch (e) {\n    errorMessage = 'unknown error';\n  }\n} else {\n  errorMessage = 'unknown error';\n}\n\nreturn [{ json: {\n  result_type: 'FAILED',\n  company_name: $json.company_name || company.company_name,\n  ticker: $json.ticker || company.ticker,\n  failed_stage: 'FETCH_NAVER_NEWS',\n  company_failed: 1,\n  article_relevant: 0, article_duplicate: 0, article_saved: 0,\n  article_analyzed: 0, article_analysis_success: 0, article_failed: 0,\n  error_message: errorMessage\n} }];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          208,
+          1216
+        ],
+        "id": "tagFetchNaverFailed",
+        "name": "Tag: Fetch Naver News Failed"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 6. Result Consolidation\n• Save AI analysis\n• Consolidate analysis\n• Build company summary",
+          "width": 288,
+          "color": 6
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          768
+        ],
+        "id": "c7081835-d4ba-414c-9f72-66166e285a94",
+        "name": "Sticky Note6"
+      },
+      {
+        "parameters": {
+          "content": "## ※ Raw Data Integrity\n• Preserve context\n• Reconcile results\n• Validate integrity",
+          "color": 4
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -784,
+          528
+        ],
+        "id": "9cf45da3-dfcb-459b-95b4-7e7fe9dc644d",
+        "name": "Sticky Note7"
+      },
+      {
+        "parameters": {
+          "content": "## ※ AI Data Integrity\n• Preserve context\n• Reconcile results\n• Validate integrity",
+          "color": 4
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -784,
+          1008
+        ],
+        "id": "fca36dcf-0f86-4c0d-bd1e-72bbf94d658d",
+        "name": "Sticky Note8"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\n\nlet companyListItems;\ntry {\n  companyListItems = $('Get Company List').all();\n} catch (e) {\n  throw new Error('Aggregate Run Stats: Get Company List \\uCD9C\\uB825\\uC744 \\uC77D\\uC744 \\uC218 \\uC5C6\\uC2B5\\uB2C8\\uB2E4 - ' + e.message);\n}\n\nconst companyTotal = companyListItems.length;\nconst startedAt = $execution.customData.get('run_started_at') || null;\nconst finishedAt = new Date().toISOString();\n\nfunction isCompanyFailed(j) {\n  if (j.result_type === 'FAILED') return true;\n  if (j.error_message !== null && j.error_message !== undefined && j.error_message !== '') return true;\n  if ((j.article_failed || 0) > 0) return true;\n  return false;\n}\n\nlet companyCompleted = 0;\nlet companyFailed = 0;\nlet articleRelevant = 0;\nlet articleDuplicate = 0;\nlet articleSaved = 0;\nlet articleAnalysisFailed = 0;\nconst failedDetails = [];\n\nfor (const it of items) {\n  const j = it.json;\n  articleRelevant += j.article_relevant || 0;\n  articleDuplicate += j.article_duplicate || 0;\n  articleSaved += j.article_saved || 0;\n  articleAnalysisFailed += j.article_failed || 0;\n\n  if (isCompanyFailed(j)) {\n    companyFailed += 1;\n    failedDetails.push(`${j.company_name || 'unknown'}: ${j.error_message || j.result_type || 'unspecified failure'}`);\n  } else {\n    companyCompleted += 1;\n  }\n}\n\nconst summaryCompanyNames = new Set(items.map(it => it.json.company_name).filter(Boolean));\nconst allCompanyNames = companyListItems.map(it => it.json.company_name).filter(Boolean);\nconst missingCompanyNames = allCompanyNames.filter(name => !summaryCompanyNames.has(name));\n\nlet runStatus;\nlet integrityNote = '';\n\nif (companyTotal === 0) {\n  runStatus = 'FAILED';\n  integrityNote = 'company_total=0 (\\uCC98\\uB9AC \\uB300\\uC0C1 \\uD68C\\uC0AC \\uC5C6\\uC74C)';\n} else if (companyTotal !== companyCompleted + companyFailed) {\n  runStatus = 'FAILED';\n  const missingCount = companyTotal - (companyCompleted + companyFailed);\n  integrityNote = `\\uC9D1\\uACC4 \\uB204\\uB77D: company_total=${companyTotal}, company_completed=${companyCompleted}, company_failed=${companyFailed}, \\uB204\\uB77D \\uAC74\\uC218=${missingCount}` +\n    (missingCompanyNames.length ? `, \\uB204\\uB77D\\uB41C company_name=[${missingCompanyNames.join(', ')}]` : '');\n} else if (companyFailed === 0) {\n  runStatus = 'SUCCESS';\n} else if (companyCompleted > 0 && companyFailed > 0) {\n  runStatus = 'PARTIAL_SUCCESS';\n} else {\n  runStatus = 'FAILED';\n}\n\nconst errorSummaryParts = [];\nif (integrityNote) errorSummaryParts.push(integrityNote);\nif (failedDetails.length) errorSummaryParts.push(failedDetails.join(' | '));\nconst errorSummary = errorSummaryParts.length ? errorSummaryParts.join(' || ') : null;\n\nconst runId = startedAt\n  ? startedAt.replace(/[-:]/g, '').replace('T', '_').slice(0, 15)\n  : finishedAt.replace(/[-:]/g, '').replace('T', '_').slice(0, 15);\n\nreturn [{\n  json: {\n    run_id: runId,\n    started_at: startedAt,\n    finished_at: finishedAt,\n    run_status: runStatus,\n    company_total: companyTotal,\n    company_completed: companyCompleted,\n    article_relevant: articleRelevant,\n    article_duplicate: articleDuplicate,\n    article_saved: articleSaved,\n    article_analysis_failed: articleAnalysisFailed,\n    company_failed: companyFailed,\n    error_summary: errorSummary\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -256,
+          -128
+        ],
+        "id": "aggregateRunStats",
+        "name": "Aggregate Run Stats"
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 809878166,
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "run_id": "={{ $json.run_id }}",
+              "started_at": "={{ $json.started_at }}",
+              "finished_at": "={{ $json.finished_at }}",
+              "run_status": "={{ $json.run_status }}",
+              "company_total": "={{ $json.company_total }}",
+              "company_completed": "={{ $json.company_completed }}",
+              "article_relevant": "={{ $json.article_relevant }}",
+              "article_duplicate": "={{ $json.article_duplicate }}",
+              "article_saved": "={{ $json.article_saved }}",
+              "article_analysis_failed": "={{ $json.article_analysis_failed }}",
+              "company_failed": "={{ $json.company_failed }}",
+              "error_summary": "={{ $json.error_summary }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "run_id",
+                "displayName": "run_id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "started_at",
+                "displayName": "started_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "finished_at",
+                "displayName": "finished_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "run_status",
+                "displayName": "run_status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "company_total",
+                "displayName": "company_total",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "company_completed",
+                "displayName": "company_completed",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "article_relevant",
+                "displayName": "article_relevant",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "article_duplicate",
+                "displayName": "article_duplicate",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "article_saved",
+                "displayName": "article_saved",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "article_analysis_failed",
+                "displayName": "article_analysis_failed",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "company_failed",
+                "displayName": "company_failed",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "error_summary",
+                "displayName": "error_summary",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -48,
+          -288
+        ],
+        "id": "saveRunLog",
+        "name": "Save Run_Log",
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "YOUR_TELEGRAM_CHAT_ID",
+          "text": "={{ $json.message }}",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          336,
+          -128
+        ],
+        "id": "sendTelegramMessage",
+        "name": "Send Telegram Message",
+        "webhookId": "e2db1622-e128-4229-910e-8d7517f458ee",
+        "credentials": {
+          "telegramApi": {
+            "id": "cB2VgfLiBclUzXT8",
+            "name": "Telegram account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "authentication": "serviceAccount",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 38584058,
+            "mode": "id"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.7,
+        "position": [
+          -48,
+          -128
+        ],
+        "id": "fetchThisRunArticles",
+        "name": "Fetch Run Articles",
+        "credentials": {
+          "googleApi": {
+            "id": "Fow05007WEhwEVex",
+            "name": "Google Sheets account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const TELEGRAM_MAX_LENGTH = 4096;\nconst FOOTER = 'Automated by n8n';\n\nfunction line(char, count) {\n  return char.repeat(count);\n}\n\nfunction buildHeader(dateStr) {\n  return [\n    '📊 DAILY MARKET BRIEF',\n    dateStr,\n    line('━', 10)\n  ].join('\\n');\n}\n\nfunction buildSummarySection(data) {\n  return [\n    'Execution Summary',\n    line('─', 10),\n    `Companies : ${data.company_completed} / ${data.company_total}`,\n    `Relevant News : ${data.article_relevant}`,\n    `New Articles : ${data.new_articles}`,\n    `AI Selected : ${data.ai_selected}`,\n    `Failed : ${data.failed}`\n  ].join('\\n');\n}\n\nfunction buildStateBody(data) {\n  if (data.state === 'EMPTY') {\n    return '이번 실행에서는 새로 저장된 기사가 없습니다.\\n관련 기사는 모두 기존 저장 기사와 중복되었습니다.';\n  }\n  if (data.state === 'NEW_ONLY') {\n    return `신규 기사 ${data.new_articles}건을 저장했습니다.\\n다만 분석 기준을 통과한 기사는 없습니다.`;\n  }\n  return null;\n}\n\nfunction buildIndustryHeader(industry) {\n  return `${industry.name} · ${industry.total_count}`;\n}\n\nfunction buildArticleBlock(article) {\n  const companyLabel = `${article.company_name} (${article.ticker})`;\n  const lines = [\n    `■ ${companyLabel}`,\n    `Priority ${article.importance} | ${article.category} | ${article.sentiment}`,\n    '',\n    article.title || '',\n    '',\n    article.ai_summary || ''\n  ];\n  if (article.reasoning) {\n    lines.push('', '💡 Analyst Note', article.reasoning);\n  }\n  lines.push('', '🔗 기사 보기', article.url || '');\n  return lines.join('\\n');\n}\n\nfunction buildIndustrySection(industry) {\n  const sections = [buildIndustryHeader(industry)];\n  industry.articles.forEach((article, idx) => {\n    sections.push('', buildArticleBlock(article));\n    if (idx < industry.articles.length - 1) {\n      sections.push('', line('─', 10));\n    }\n  });\n  return sections.join('\\n');\n}\n\nfunction buildFullMessage(data) {\n  const sections = [buildHeader(data.date), '', buildSummarySection(data)];\n\n  const stateBody = buildStateBody(data);\n  if (stateBody) {\n    sections.push('', stateBody);\n  } else {\n    for (const industry of data.industries) {\n      sections.push('', buildIndustrySection(industry));\n    }\n  }\n\n  sections.push('', FOOTER);\n  return sections.join('\\n');\n}\n\nfunction splitIntoChunks(fullMessage, maxLength) {\n  if (fullMessage.length <= maxLength) return [fullMessage];\n\n  const blocks = fullMessage.split('\\n\\n');\n  const chunks = [];\n  let current = '';\n\n  for (const block of blocks) {\n    const candidate = current ? `${current}\\n\\n${block}` : block;\n    if (candidate.length > maxLength) {\n      if (current) chunks.push(current);\n      if (block.length > maxLength) {\n        for (let i = 0; i < block.length; i += maxLength) {\n          chunks.push(block.slice(i, i + maxLength));\n        }\n        current = '';\n      } else {\n        current = block;\n      }\n    } else {\n      current = candidate;\n    }\n  }\n  if (current) chunks.push(current);\n  return chunks;\n}\n\nconst data = $input.first().json;\nconst fullMessage = buildFullMessage(data);\nconst chunks = splitIntoChunks(fullMessage, TELEGRAM_MAX_LENGTH);\n\nreturn chunks.map((message, idx) => ({\n  json: {\n    message,\n    part: idx + 1,\n    total_parts: chunks.length\n  }\n}));"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          144,
+          -128
+        ],
+        "id": "buildTelegramMessage",
+        "name": "Build Message"
+      },
+      {
+        "parameters": {
+          "content": "## STEP 7. Run Completion\n• Aggregate run statistics\n• Save run log\n• Send Telegram report",
+          "color": "#9BD6F0"
+        },
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          -1152,
+          944
+        ],
+        "id": "16c66329-dd1e-46c1-8191-dac7b39ce774",
+        "name": "Sticky Note5"
+      },
+      {
+        "parameters": {
+          "jsCode": "function getRunSummary() {\n  const summaryItems = $('Aggregate Run Stats').all();\n  return summaryItems[0]?.json || {};\n}\n\nfunction toTimestamp(dateStr) {\n  const t = new Date(dateStr).getTime();\n  return Number.isNaN(t) ? 0 : t;\n}\n\nfunction filterThisRunArticles(articles, startedAt) {\n  if (!startedAt) return articles;\n  return articles.filter(a => (a.analyzed_at || '') >= startedAt);\n}\n\nfunction padTicker(ticker) {\n  return String(ticker ?? '').padStart(6, '0');\n}\n\nfunction normalizeArticle(a) {\n  return {\n    company_name: a.company_name,\n    ticker: padTicker(a.ticker),\n    importance: Number(a.importance) || 0,\n    category: a.category,\n    sentiment: a.sentiment,\n    title: a.title,\n    ai_summary: a.ai_summary,\n    reasoning: a.reasoning,\n    url: a.url,\n    published_at: a.published_at,\n    industry: a.industry || '기타'\n  };\n}\n\nfunction groupByIndustry(articles) {\n  const groups = {};\n  for (const a of articles) {\n    if (!groups[a.industry]) groups[a.industry] = [];\n    groups[a.industry].push(a);\n  }\n  return groups;\n}\n\nfunction sortArticlesWithinGroup(articles) {\n  return [...articles].sort((a, b) => {\n    const priorityDiff = b.importance - a.importance;\n    if (priorityDiff !== 0) return priorityDiff;\n    return toTimestamp(b.published_at) - toTimestamp(a.published_at);\n  });\n}\n\nfunction sortIndustryGroups(entries) {\n  return [...entries].sort((a, b) => {\n    const topA = a.articles[0]?.importance || 0;\n    const topB = b.articles[0]?.importance || 0;\n    if (topB !== topA) return topB - topA;\n    return b.articles.length - a.articles.length;\n  });\n}\n\nfunction determineState(newArticles, aiSelected) {\n  if (newArticles === 0) return 'EMPTY';\n  if (aiSelected === 0) return 'NEW_ONLY';\n  return 'HAS_SELECTED';\n}\n\nfunction formatDate(iso) {\n  if (!iso) return new Date().toISOString().slice(0, 10);\n  return iso.slice(0, 10);\n}\n\nconst TOP_N_PER_INDUSTRY = 3;\n\nconst summary = getRunSummary();\nconst rawArticles = $input.all().map(it => it.json);\nconst thisRunArticles = filterThisRunArticles(rawArticles, summary.started_at).map(normalizeArticle);\n\nconst newArticles = summary.article_saved ?? 0;\nconst aiSelected = thisRunArticles.length;\nconst state = determineState(newArticles, aiSelected);\n\nlet industries = [];\nif (state === 'HAS_SELECTED') {\n  const grouped = groupByIndustry(thisRunArticles);\n  const entries = Object.entries(grouped).map(([name, articles]) => ({\n    name,\n    articles: sortArticlesWithinGroup(articles)\n  }));\n  const sortedEntries = sortIndustryGroups(entries);\n  industries = sortedEntries.map(e => ({\n    name: e.name,\n    total_count: e.articles.length,\n    articles: e.articles.slice(0, TOP_N_PER_INDUSTRY)\n  }));\n}\n\nreturn [{\n  json: {\n    started_at: summary.started_at,\n    date: formatDate(summary.started_at),\n    company_total: summary.company_total ?? 0,\n    company_completed: summary.company_completed ?? 0,\n    article_relevant: summary.article_relevant ?? 0,\n    new_articles: newArticles,\n    ai_selected: aiSelected,\n    failed: summary.company_failed ?? 0,\n    state,\n    industries\n  }\n}];"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          192,
+          -400
+        ],
+        "id": "prepareTelegramDataProd",
+        "name": "Prepare Telegram Data"
+      }
+    ],
+    "connections": {
+      "Loop Over Items": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Run Stats",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Naver Query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Company List": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Search Existing News",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Get Company List",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clean Article Data": {
+        "main": [
+          [
+            {
+              "node": "Deduplicate Current Run",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Filter Relevant    Articles": {
+        "main": [
+          [
+            {
+              "node": "IF: No Relevant Articles?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate News Importance": {
+        "main": [
+          [
+            {
+              "node": "Prepare Importance Routing",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Search Existing News": {
+        "main": [
+          []
+        ]
+      },
+      "Check New Articles": {
+        "main": [
+          [
+            {
+              "node": "IF: No New Articles?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save Raw News": {
+        "main": [
+          [
+            {
+              "node": "Merge Raw News Context",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Tag: Company Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Naver Query": {
+        "main": [
+          [
+            {
+              "node": "Fetch Naver News",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Deduplicate Current Run": {
+        "main": [
+          [
+            {
+              "node": "Filter Relevant    Articles",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Gemini Response": {
+        "main": [
+          [
+            {
+              "node": "Count Analyzed Success",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save  AI_Analysis ": {
+        "main": [
+          [
+            {
+              "node": "Merge AI Analysis Context",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Tag: Save AI_Analysis Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Search Results": {
+        "main": [
+          [
+            {
+              "node": "Clean Article Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Naver News": {
+        "main": [
+          [
+            {
+              "node": "Split Search Results",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Tag: Fetch Naver News Failed",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Analyze News with Gemini": {
+        "main": [
+          [
+            {
+              "node": "Parse Gemini Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Count Analyzed Success": {
+        "main": [
+          [
+            {
+              "node": "IF: Is Fallback Summary?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: Is Fallback Summary?": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Save  AI_Analysis ",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Keep AI Analysis Context",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: No Relevant Articles?": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Check New Articles",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: No New Articles?": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Save Raw News",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Keep Raw News Context",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Importance Routing": {
+        "main": [
+          [
+            {
+              "node": "IF: Has High Importance?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF: Has High Importance?": {
+        "main": [
+          [
+            {
+              "node": "Split Out High Importance",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Out High Importance": {
+        "main": [
+          [
+            {
+              "node": "Analyze News with Gemini",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Company Summary": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Keep Raw News Context": {
+        "main": [
+          [
+            {
+              "node": "Merge Raw News Context",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge Raw News Context": {
+        "main": [
+          [
+            {
+              "node": "Validate Raw News Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Raw News Merge": {
+        "main": [
+          [
+            {
+              "node": "Calculate News Importance",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Keep AI Analysis Context": {
+        "main": [
+          [
+            {
+              "node": "Merge AI Analysis Context",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Validate AI Analysis Merge": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge AI Analysis Context": {
+        "main": [
+          [
+            {
+              "node": "Validate AI Analysis Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Tag: Save AI_Analysis Failed": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Tag: Company Failed": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Tag: Fetch Naver News Failed": {
+        "main": [
+          [
+            {
+              "node": "Build Company Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Run Stats": {
+        "main": [
+          [
+            {
+              "node": "Save Run_Log",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Fetch Run Articles",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Run Articles": {
+        "main": [
+          [
+            {
+              "node": "Prepare Telegram Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Message": {
+        "main": [
+          [
+            {
+              "node": "Send Telegram Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Telegram Data": {
+        "main": [
+          [
+            {
+              "node": "Build Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {}
+  }
+]

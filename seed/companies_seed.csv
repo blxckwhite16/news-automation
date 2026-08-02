@@ -1,0 +1,11 @@
+company_name,ticker,market,industry,aliases,active
+삼성전자,005930,KOSPI,반도체,"삼성전자,Samsung Electronics,005930",TRUE
+SK하이닉스,000660,KOSPI,반도체,"SK하이닉스,SK Hynix,000660",TRUE
+현대차,005380,KOSPI,자동차,"현대차,현대자동차,Hyundai Motor,005380",TRUE
+기아,000270,KOSPI,자동차,"기아,기아자동차,Kia,000270",TRUE
+NAVER,035420,KOSPI,플랫폼,"네이버,NAVER,035420",TRUE
+카카오,035720,KOSPI,플랫폼,"카카오,Kakao,035720",TRUE
+LG에너지솔루션,373220,KOSPI,2차전지,"LG에너지솔루션,LG Energy Solution,LGES,373220",TRUE
+삼성SDI,006400,KOSPI,2차전지,"삼성SDI,Samsung SDI,006400",TRUE
+한화에어로스페이스,012450,KOSPI,방산,"한화에어로스페이스,Hanwha Aerospace,012450",TRUE
+LIG넥스원,079550,KOSPI,방산,"LIG넥스원,LIG Nex1,079550",TRUE
