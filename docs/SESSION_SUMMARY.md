@@ -7,18 +7,22 @@
 
 ## Completed
 
+세션 전체 결과 요약. 각 항목의 구현 과정·검증 상세는 괄호로 표시된 전용 절 참고.
+
 - NAVER Search API 기반 뉴스 수집 파이프라인 구현 완료 (Google News RSS 대체)
 - Company Loop 검증 완료 (SK하이닉스, 현대자동차 2개 기업 기준)
 - Raw_News 저장 검증 완료
-- Gemini JSON 구조화 출력 적용 (프롬프트 기반, n8n 노드 자체의 response_schema 기능은 미지원)
-- JSON 파싱 및 원본 데이터 재결합 Code 노드 구현 완료
+- Gemini JSON 구조화 출력 적용 (프롬프트 기반 파싱/검증, n8n 노드 자체의 response_schema 기능은 미지원)
 - AI_Analysis 시트 저장 완료
 - Schedule Trigger 매일 08:30(Asia/Seoul) 설정 완료
-- Loop Over Items `done` 출력 누적 방식 검증 완료 — n8n CLI(`docker exec n8n n8n import:workflow` / `execute`)로 브라우저 없이 별도 테스트 워크플로우를 만들어 실행, **A안(Aggregate로 회사당 결과를 1개 아이템으로 합친 뒤 loop-back) 정상 동작 확인** (done 출력에 회사별 1개씩 정확히 누적됨)
-- **보안 수정**: `Fetch Naver News` / `HTTP Request (Test for Naver)` 두 노드에 NAVER API Key/Key-ID가 헤더 파라미터에 평문으로 하드코딩되어 있던 것을 발견 → n8n Credential(`httpCustomAuth` 타입, "NAVER Search API Header Auth")로 이전, 두 노드는 이제 credential 참조만 가짐. 실제 NAVER API 호출로 정상 동작 검증 완료
+- Loop Over Items `done` 출력 누적 방식 검증 완료 (Aggregate로 회사당 결과 1개로 합친 뒤 loop-back하는 방식 확정)
+- NAVER API 키 평문 노출 최초 발견 및 credential 이전 완료 (재발 및 최종 정리는 "보안 재발 및 정리" 절 참고)
 - News Collector 워크플로우를 `n8n/workflows/news-collector.json`으로 export하여 버전관리 시작
-- **오류 격리 아키텍처 전면 구현 및 프로덕션 반영 완료** (아래 "오류 격리 아키텍처" 절 참고) — "News Collector"(ID `2hzQvxGKNmK6WgQW`)에 10개 신규 노드 추가, 2개 기존 노드 코드 재작성. 프로덕션 전체 실행으로 검증: 10개 회사 전원 처리, `Build Company Summary` 정확히 10건(회사당 1건), `Validate Raw News Merge`/`Validate AI Analysis Merge` 정상 통과, 회사별 `article_relevant = article_duplicate + article_saved`, `article_failed = article_analyzed - article_analysis_success` 관계식 전원 일치 확인 (LIG넥스원 등 개별 회사 단위로 재확인)
-- **프로덕션 데이터 안전사고 발견**: CLI 테스트 실행 중 실수로 운영 Google Sheets(Raw_News, AI_Analysis)에 테스트 데이터가 기록됨. 원인은 DEV 워크플로우 노드의 `documentId`를 재확인 없이 덮어쓴 것 — 재발 방지를 위해 "워크플로우 편집 직전 반드시 최신 상태를 재-export 후 수정" 원칙 확립. **영향 범위 식별까지 완료**(Raw_News 2~90행, AI_Analysis 2~38행, 타임스탬프로 단일 실행에 귀속 확인), **삭제 자체는 사용자가 직접 처리 중** (Claude는 운영 데이터를 직접 삭제하지 않음)
+- **오류 격리 아키텍처 전면 구현 및 프로덕션 반영 완료** ("오류 격리 아키텍처" 절 참고)
+- **프로덕션 데이터 안전사고 발생 및 수습** — 영향 범위 식별 완료, 재발 방지 원칙 확립 (Decisions "워크플로우 편집 원칙" 참고), 삭제는 사용자가 직접 처리
+- **Run_Log 구현 완료** ("Run_Log 설계 및 구현 계획" 절 참고)
+- **프로덕션 워크플로우 잔여 정리 완료** ("프로덕션 워크플로우 정리" 절 참고)
+- **Telegram 완료 알림 V1 구현 및 프로덕션 반영 완료** ("Telegram 완료 알림" 절 참고)
 
 ## 오류 격리 아키텍처 (이번 세션 핵심 작업)
 
@@ -60,6 +64,9 @@
 - 그 사이에 1→N 분기와 부분 필터가 겹치는 구간이 없음
 
 다른 위치에서 동일한 참조 패턴(특히 `.all()`)을 재사용할 경우, "이전에 안전했으니 안전하다"고 가정하지 말고 반드시 그 위치의 구체적인 데이터 흐름을 기준으로 별도 검증해야 한다. LG에너지솔루션 건이 정확히 "비슷해 보이지만 안전하지 않았던" 사례다.
+
+### 검증
+"News Collector"(ID `2hzQvxGKNmK6WgQW`)에 10개 신규 노드 추가, 2개 기존 노드 코드 재작성 후 프로덕션 전체 실행으로 검증: 10개 회사 전원 처리, `Build Company Summary` 정확히 10건(회사당 1건), `Validate Raw News Merge`/`Validate AI Analysis Merge` 정상 통과, 회사별 `article_relevant = article_duplicate + article_saved`, `article_failed = article_analyzed - article_analysis_success` 관계식 전원 일치 확인 (LIG넥스원 등 개별 회사 단위로 재확인).
 
 ## 보안 재발 및 정리 (이번 세션 후반)
 
@@ -146,20 +153,31 @@ DEV 통합 테스트(테스트 스프레드시트) 결과: 실행 2회 각각 Ru
 - `docs/design.md` — v1.3. Run_Log 스키마(5.4절) 확정, MVP 범위에 오류 격리·Telegram 알림 반영, NAVER API 전환 사실 반영, 8절에 현재 구조로의 확장 사실과 SESSION_SUMMARY.md 참조 추가
 - `docs/SESSION_SUMMARY.md` — 이번 세션 전체 작업 기록 (오류 격리 아키텍처, 보안 재발 대응, Run_Log, 프로덕션 정리, Telegram 완료 알림)
 - `docs/TASKS.md`, `docs/README.md` — 진행 상황 최신화
+
+## Knowledge Added
+
+프로젝트 산출물이 아니라, 이 프로젝트 밖에서도 재사용 가능한 일반 지식으로 워크스페이스 공용 knowledge 디렉터리에 추가함 (`ai-workspace/knowledge/`, 이 프로젝트 저장소 밖).
+
 - `knowledge/n8n/n8n-execution-model.md` — **신규**. 이번 세션에서 실제 CLI/Integration Test로 검증한 내용을 프로젝트와 무관하게 일반화한 n8n 재사용 가능 Engineering Handbook (Core Execution Model, State Passing Pattern, Execution-scoped Shared State, Loop 설계, Error Handling, 테스트 전략, 운영 원칙)
 
 ## Decisions
+
+프로젝트 아키텍처에 대한 확정 결정만 남긴다. 이번 세션에서만 의미가 있었던 작업 절차는 아래 "작업 환경 및 절차 메모" 참고.
 
 - Google News RSS 대신 NAVER Search API를 최종 데이터 소스로 채택 (redirect 해석 불확실성 회피, 공식 문서화된 API, 하루 25,000회 무료 한도)
 - AI_Analysis 스키마 확정: article_id/company_name/industry는 입력값 그대로 사용(Gemini 재생성 안 함), category/ai_summary/sentiment/keywords/reasoning은 Gemini 생성, importance는 Calculate Importance의 규칙 기반 점수 사용, confidence 제외
 - category enum 유지(EARNINGS/CONTRACT/PRODUCT/POLICY/LAWSUIT/MNA/MANAGEMENT/SECURITY/MACRO/OTHER), CONTRACT 정의를 협력/제휴 관계까지 포괄하도록 명확화 (PARTNERSHIP enum 별도 추가 안 함)
 - 오류 격리는 "Build Company Summary" 패턴(회사당 정확히 1개 제어 아이템 보장)으로 **확정**. Google Sheets Append의 필드 스트리핑 문제는 Fork+Merge(article_id 기준)로 해결, `$getWorkflowStaticData('global')`은 동시성/영속성 리스크로 기본 해법에서 제외하고 최후 보조 수단으로만 검토 대상 유지
-- 노드 참조(`$('Node').item`/`.first()`/`.all()`)는 State Passing이 불가능할 때만 쓰는 예외이며, 쓰더라도 해당 위치의 데이터 흐름을 개별 검증해야 함 — 일반화 금지 (위 "참조 안전성" 절 참고)
+- State Passing을 기본 원칙으로 채택, 노드 참조(`$('Node').item`/`.first()`/`.all()`)는 State Passing이 불가능할 때만 쓰는 예외 (일반 원칙은 `knowledge/n8n/n8n-execution-model.md` 2절, 이 프로젝트에서의 안전 조건 검증은 위 "참조 안전성" 절 참고)
 - NAVER API 인증은 워크플로우 노드에 평문 헤더로 두지 않고 n8n Credential(`httpCustomAuth`, 이름: "NAVER Search API Header Auth")로 관리
-- **n8n CLI 직접 조작 방식 확립** (향후 세션 참고): n8n이 Docker 컨테이너(`n8n`)로 로컬 실행 중이며, `docker exec n8n n8n <command>`로 브라우저 UI 없이 워크플로우/크리덴셜을 import/export/execute 가능. `n8n execute --id=<id>`는 기본 Task Broker(5679 포트)가 메인 프로세스와 충돌하므로 `-e N8N_RUNNERS_BROKER_PORT=<다른 포트>`를 함께 넘겨야 함
-- **워크플로우 편집 원칙**: 편집 직전 항상 최신 상태를 다시 export한 뒤 수정 (프로덕션 데이터 안전사고의 직접 원인이었던, 오래된 로컬 사본을 기준으로 편집/재-import하는 패턴을 금지)
-- **운영 워크플로우 변경 적용 방식 (세션 진행에 따라 조정됨)**: 초기 오류 격리 아키텍처(Fork+Merge 등 구조 변경)는 DEV에서 먼저 전체 검증한 뒤 운영 워크플로우에 노드를 하나씩 사용자가 n8n UI에서 직접 적용하는 방식으로 진행 — 새로운 아키텍처를 사용자가 직접 이해하며 반영하는 것이 목적이었음. 이후 보안 수정·Run_Log·Telegram처럼 설계가 이미 확정되고 반복적인 작업은 Claude가 DEV에서 검증 후 사용자 승인을 받아 백엔드(n8n CLI)로 직접 프로덕션에 반영하는 방식으로 전환 — 매번 어떤 방식으로 진행할지는 작업의 성격(새 아키텍처 학습 목적 vs 이미 합의된 설계의 반복 적용)에 따라 그때그때 확인
-- **백엔드로 프로덕션을 수정하는 동안 n8n 편집기 탭이 열려있으면 안전하지 않음**: 실제로 두 차례 발생 — 백엔드 변경 완료 후 사용자가 열어둔 탭에서 저장(자동 저장 포함)이 발생해 변경 사항이 통째로 되돌아감. 재발 방지 원칙: 백엔드 수정 작업 동안에는 해당 워크플로우 편집기 탭을 아예 닫아두고, 작업 완료 후 새로고침으로 최신 상태를 확인 (일반화된 원칙은 `knowledge/n8n/n8n-execution-model.md` 7절 참고)
+
+## 작업 환경 및 절차 메모
+
+프로젝트 아키텍처 결정이 아니라, 이 프로젝트의 개발 환경 설정과 Claude-사용자 간 작업 방식에 대한 메모. 다음 세션에서 동일한 방식으로 작업하려면 참고가 필요하지만, 위 Decisions와는 성격이 다르므로 구분해서 남긴다.
+
+- **n8n CLI 직접 조작 방식**: n8n이 Docker 컨테이너(`n8n`)로 로컬 실행 중이며, `docker exec n8n n8n <command>`로 브라우저 UI 없이 워크플로우/크리덴셜을 import/export/execute 가능. `n8n execute --id=<id>`는 기본 Task Broker(5679 포트)가 메인 프로세스와 충돌하므로 `-e N8N_RUNNERS_BROKER_PORT=<다른 포트>`를 함께 넘겨야 함
+- **워크플로우 편집·동시 저장 위험**: 편집 직전 항상 최신 상태를 다시 export한 뒤 수정하고, 백엔드로 프로덕션을 수정하는 동안에는 n8n 편집기 탭을 아예 닫아둔다 (이 프로젝트에서 실제로 두 차례 발생 — 프로덕션 데이터 안전사고, Phase B+C 반영 중 되돌림). 일반화된 원칙은 `knowledge/n8n/n8n-execution-model.md` 7절 참고
+- **운영 워크플로우 변경 적용 방식**: 새로운 아키텍처(Fork+Merge 등 구조 변경)는 DEV에서 먼저 검증한 뒤 운영에는 사용자가 n8n UI에서 노드를 하나씩 직접 적용 — 사용자가 새 아키텍처를 직접 이해하며 반영하는 것이 목적. 설계가 이미 확정되고 반복적인 작업(보안 수정·Run_Log·Telegram)은 Claude가 DEV 검증 후 사용자 승인을 받아 백엔드(n8n CLI)로 직접 프로덕션에 반영. 어떤 방식으로 진행할지는 작업 성격(학습 목적 vs 합의된 설계의 반복 적용)에 따라 매번 확인
 
 ## Blockers
 

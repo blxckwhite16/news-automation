@@ -39,19 +39,19 @@
 
 - [x] AI_Analysis append 노드 구성 (Save AI_Analysis, Loop Over Items로 loop-back 연결까지 완료)
 - [x] Loop Over Items `done` 출력 누적 방식 검증 (A안 확정 — Aggregate로 회사당 결과 1개로 합친 뒤 loop-back, done 출력에 정상 누적됨을 n8n CLI 테스트 워크플로우 실행으로 확인)
-- [x] 오류 격리 구현 — "Build Company Summary" 패턴으로 최종 확정: 관련 기사 0건/신규 기사 0건/고중요도 기사 0건/API 실패 등 모든 케이스에서 회사당 반드시 1개의 제어 아이템이 생성되도록 IF 트리 + 최종 통합 노드 구성. 저장 노드(Save Raw News/Save AI_Analysis)의 Google Sheets Append가 매핑 안 된 필드를 스트리핑하는 문제는 Fork+Merge(article_id 기준) 패턴으로 해결 — 노드 참조(pairedItem) 방식은 1→N 분기+부분 필터가 겹치는 구간에서 깨지는 것을 실제 프로덕션 장애(LG에너지솔루션 건)로 확인 후 폐기. 상세는 SESSION_SUMMARY.md 참고
+- [x] 오류 격리 구현 — 회사당 정확히 1개의 결과가 남도록 보장하는 "Build Company Summary" 패턴 적용, 저장 단계 필드 유실 문제는 Fork+Merge(article_id 기준)로 해결 (설계는 docs/design.md 8.2절, 구현 과정은 SESSION_SUMMARY.md 참고)
 - [x] Save Raw News / Save AI_Analysis 저장 실패 시 에러 출력 미연결로 회사 요약이 누락되던 문제 수정 (Tag: Company Failed / Tag: Save AI_Analysis Failed 노드 추가)
-- [x] Run_Log 구현 완료 — 12개 컬럼 (docs/design.md 5.4절), Phase A(Fetch Naver News 실패 경로 수정) → Phase B(run_started_at, `$execution.customData` 방식) → Phase C(`Aggregate Run Stats` + `Save Run_Log`) 순서로 프로덕션 반영, DEV 통합 테스트 및 **프로덕션 실제 실행(사용자가 n8n UI에서 직접 실행)으로 Run_Log 1행 정상 기록 최종 확인** (상세는 SESSION_SUMMARY.md "Run_Log 설계 및 구현 계획" 참고)
-- [x] NAVER API 키 평문 재노출 발견 및 수정 — `Fetch Naver News`를 credential 참조로 복원, 평문 키를 가진 테스트/구버전 체인(`HTTP Request (Test for Naver)` + Manual Trigger 체인, `Fetch Naver News1` + "Schedule Trigger for DEV" 체인) 25개 노드 전체 삭제. 상세는 SESSION_SUMMARY.md "보안 재발 및 정리" 참고
+- [x] Run_Log 구현 완료 — 12개 컬럼, 회사 단위 집계 및 무결성 우선 판정 (설계는 docs/design.md 5.4절), 프로덕션 실행으로 정상 기록 확인
+- [x] NAVER API 키 평문 노출 발견 및 수정 — credential 참조로 전환, 평문 키를 가진 테스트/구버전 노드 전체 삭제 (경위는 SESSION_SUMMARY.md 참고)
 - [ ] NAVER API 키 재발급 (사용자가 NAVER Developer Center에서 직접 처리 예정)
-- [x] 프로덕션 워크플로우 잔여 정리 완료: 고아 노드 5개 삭제, 죽은 브랜치 "Filter by Importance" 연결 해제 및 삭제 (상세는 SESSION_SUMMARY.md "프로덕션 워크플로우 정리" 참고)
-- [x] Telegram 완료 알림 V1 구현 완료 — 데이터 가공(`Prepare Telegram Data`)과 렌더링(`Build Message`) 분리, 산업별 그룹핑, Priority 상위 3건, New Articles/AI Selected 지표 분리, 0건 상태 2가지 분기, ticker 0 패딩, 축소된 템플릿, 4096자 초과 자동 분할. DEV에서 4가지 상태 전부 실제 전송 검증 완료, 프로덕션 반영 완료 (상세는 SESSION_SUMMARY.md "Telegram 완료 알림" 참고)
+- [x] 프로덕션 워크플로우 잔여 정리 완료 — 고아 노드 및 죽은 브랜치 제거
+- [x] Telegram 완료 알림 V1 구현 완료 — 산업별 그룹화, Priority 상위 3건 발췌, 데이터 가공과 렌더링 노드 분리. DEV 검증 후 프로덕션 반영 완료 (상세는 SESSION_SUMMARY.md 참고)
 - [ ] 종목코드(ticker) Raw_News/AI_Analysis 저장 시 숫자로 변환되는 문제 근본 수정 — Google Sheets 컬럼 서식을 일반 텍스트로 변경 필요 (핵심 저장 노드 관련 작업이라 별도 진행 권장)
 
 ## Phase 5 — 테스트 & 안정화
 
 - [x] End-to-end 실행 테스트 — Phase 4 작업 전체에 걸쳐 DEV(테스트 스프레드시트)와 프로덕션(10개 기업 전체)에서 반복적으로 실제 실행 검증 완료 (기업 1~2개 축소보다 넓은 범위로 검증됨)
-- [x] 에러 핸들링 점검 — NAVER API 실패/Raw_News 저장 실패/Gemini 분석 실패/AI_Analysis 저장 실패 각 단계별로 실제 오류 격리 동작 검증 완료 (docs/SESSION_SUMMARY.md "오류 격리 아키텍처" 참고)
+- [x] 에러 핸들링 점검 — NAVER API 실패/Raw_News 저장 실패/Gemini 분석 실패/AI_Analysis 저장 실패 각 단계별로 실제 오류 격리 동작 검증 완료
 - [ ] 1주일 자동 실행 모니터링 — 2026-08-02 워크플로우 활성화(active=true), 모니터링 시작. 종료 예정일 2026-08-09 전후
 
 ## Phase 6 — MVP 이후 백로그
