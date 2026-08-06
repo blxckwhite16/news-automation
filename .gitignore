@@ -4,3 +4,6 @@ credentials/
 *.key.json
 node_modules/
 .claude/settings.local.json
+n8n/workflows/backups/
+CLAUDE.md
+docs/SESSION_SUMMARY.md

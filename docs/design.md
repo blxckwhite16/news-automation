@@ -215,7 +215,7 @@ aliases 컬럼의 값을 그대로 결합해 검색식으로 쓰지 않는다. �
 
 ## 8. n8n 워크플로우 설계
 
-전체 노드 구성은 `docs/n8n-workflow-map.png`를 참고한다.
+전체 노드 구성은 `docs/n8n-workflow-map_v1.1.0.png`(Gemini 기사 단위 재시도 구조 반영, 50개 노드)를 참고한다.
 
 ### 8.1 처리 흐름
 
@@ -229,7 +229,7 @@ aliases 컬럼의 값을 그대로 결합해 검색식으로 쓰지 않는다. �
 6. **신규/중복 판별** — Raw_News 기존 article_id 조회 결과와 비교, 신규 기사만 다음 단계로 전달 (7.2절)
 7. **Raw_News 저장** — AI 분석 이전에 원본 기사 저장
 8. **중요도 사전 점수화** — 키워드 기반 스코어링으로 Gemini 호출 대상 축소
-9. **Gemini API 호출** — 8단계 임계값 이상만 호출, 구조화 프롬프트 (9절 스키마)
+9. **Gemini API 호출** — 8단계 임계값 이상만, **기사 1건씩 순차 호출**(호출 간 1초 대기, 429 발생 시 해당 기사만 최대 3회·15초 간격 재시도), 구조화 프롬프트 (9절 스키마). 회사당 여러 기사를 한 번에 배치 처리하지 않는 이유는 8.6절 참고
 10. **JSON 파싱/검증** — category/sentiment enum 값 검증, company_name/industry/importance는 입력값으로 재결합
 11. **AI_Analysis 저장** — 검증 통과 시 분석 결과 저장
 12. **실행 통계 집계 → Run_Log 저장** (5.4절)
@@ -253,6 +253,57 @@ aliases 컬럼의 값을 그대로 결합해 검색식으로 쓰지 않는다. �
 ### 8.3 실행 결과 처리 (Run_Log · Telegram)
 
 기업별 Loop가 모두 끝나면, 실행 전체에 대한 통계를 집계해 Run_Log에 1행으로 기록한다(스키마와 판정 기준은 5.4절). 이어서 이번 실행에서 새로 저장된 기사를 산업별로 그룹화하고, 그룹별 Priority 상위 기사를 선별해 Telegram으로 발송한다. 신규 저장 기사 자체가 없는 경우와, 저장은 됐지만 분석 기준(중요도 임계값)을 통과한 기사가 없는 경우는 서로 다른 안내 문구로 구분해 전달한다.
+
+### 8.4 운영 환경 — Windows Host 전원 관리 (Windows Host Layer)
+
+n8n은 로컬 Windows PC(Docker Desktop + WSL2) 위에서 상시 구동되는 것이 아니라, 매일 아침 트리거 시점에만 살아있으면 되는 구조다. 이 PC가 Modern Standby(S0) 전용 노트북이라 Windows Task Scheduler의 예약 기상(Wake Timer)이 구조적으로 신뢰할 수 없다는 문제가 실측으로 확인되었다(조사 과정과 근거는 SESSION_SUMMARY.md "Windows Host 전원 관리 및 S4 RTC Wake Bridge (2026-08-04)" 절 참고). 대신 이 하드웨어가 지원하는 Hibernate(S4) + BIOS RTC Wake 조합은 실측으로 신뢰성이 확인되어 운영 방식으로 채택했다.
+
+**일일 사이클**:
+```
+Windows Hibernate (S4)
+        |
+        v
+RTC Wake (08:20, BIOS + Task Scheduler WakeToRun)
+        |
+        v
+Windows Bridge Task (SetThreadExecutionState로 절전 방지)
+        |
+        v
+Docker Desktop / WSL2 복원 (Hibernate Resume이 이전 세션을 그대로 복구)
+        |
+        v
+News Collector 전용 rearm (호스트-WSL 시계 동기화 확인 → REST API deactivate/activate)
+        |
+        v
+n8n Schedule Trigger (08:30) → 뉴스 수집 → AI 분석 → Telegram 리포트
+        |
+        v
+Bridge 해제 (08:45) → System Idle → Hibernate(S4) 재진입
+```
+
+이 계층은 n8n 워크플로우 내부와 완전히 독립적으로, Windows Task Scheduler 작업(`NewsAutomationWakeBridge`) 하나로만 구성되어 있다. n8n 워크플로우 자체는 "그 순간 컨테이너가 살아있고 트리거가 올바르게 무장되어 있으면 정확히 스케줄대로 동작한다"는 것만 책임지며 수정되지 않았고, RTC 기상/절전 방지는 Windows 호스트에서만 처리 가능한 영역이라 이 경계로 분리했다.
+
+**절전 복귀 특유의 문제와 rearm 단계**: 호스트가 절전에서 복귀할 때 WSL2 게스트의 시계가 즉시 재동기화되지 않을 수 있고, 절전 이전에 예약된 타이머가 절전 구간만큼 지연될 가능성도 구조적으로 존재한다(실측 근거와 확정 사실/가설 구분은 `SESSION_SUMMARY.md` 2026-08-06 참고, 일반화된 메커니즘은 `knowledge/n8n/n8n-local-scheduling-on-wsl2.md`). 이를 방어하기 위해 Bridge는 컨테이너 준비 확인 뒤 곧바로 실행을 시작하지 않고, (1) Windows-WSL 시계 오차가 허용 범위 안인지 확인한 뒤에만 (2) News Collector 워크플로우 하나만 REST API로 deactivate→activate해 트리거를 절전 이전 기준이 아니라 기상 이후 현재 시각 기준으로 다시 무장시킨다. 이 rearm은 인스턴스의 다른 워크플로우나 컨테이너 자체는 건드리지 않으며, 대상 워크플로우에 진행 중인 실행이 있으면 아무것도 하지 않고 건너뛴다. 절차의 일반 원칙은 `knowledge/n8n/n8n-deployment-and-trigger-lifecycle.md` 7절, 이번 프로젝트 적용은 `scripts/rearm-news-collector-trigger.sh` 참고.
+
+### 8.5 프로덕션 워크플로우 배포 절차
+
+이미 실행 중인 n8n 인스턴스에 워크플로우 변경을 반영할 때, `n8n import:workflow`/`publish:workflow` 같은 CLI 명령은 DB만 갱신할 뿐 살아있는 서버 프로세스의 트리거 등록에는 반영되지 않는다(별도 프로세스이기 때문). 과거에는 이를 `docker restart n8n`으로 보완했으나, 재시작 자체가 사람이 잊기 쉬운 수동 단계였고 실제로 이 gap 때문에 Schedule Trigger가 죽은 채로 방치되는 사고가 반복됐다.
+
+**현재 절차 (2026-08-06 기준, deactivate 순서 정정 반영)**: REST API `deactivate` → CLI import(콘텐츠 반영) → REST API `activate` 순서로 진행한다. **`CLI import → REST activate` 순서만 쓰면, 트리거 설정이 이전과 동일할 경우 n8n의 스케줄 관리 컴포넌트가 "이미 등록된 cron"으로 판정해 새 등록을 조용히 건너뛸 수 있다**(`active: true` 응답이 나와도 실제로는 트리거가 갱신되지 않음) — 2026-08-06 무인 실행 실패의 직접 원인이었다. REST `deactivate`를 먼저 호출하면 라이브 프로세스의 트리거 등록이 실제로 해제되므로, 뒤이은 `activate`가 이 문제 없이 새로 등록한다.
+
+이 절차는 `scripts/deploy-production-workflow.sh`(12단계 wrapper: in-flight 확인 → 백업/diff → REST deactivate → 라이브 등록 해제 확인 → CLI import → 비활성 유지 확인 → REST activate → "이미 등록됨" 스킵 로그 부재 확인 → 활성화 확인 → 감사 로그 확인 → 트리거/알림/저장소 설정 및 최종 in-flight 확인, 실패 시 즉시 중단) 하나로 고정되어 있다. 이 스크립트 밖에서 개별 CLI 명령을 직접 실행해 프로덕션에 반영하지 않는다.
+
+콘텐츠 변경 없이 트리거만 다시 무장시켜야 할 때(예: 절전 복귀 직후, 8.4절)는 이 배포 절차 대신 `scripts/rearm-news-collector-trigger.sh`로 News Collector 하나만 REST deactivate→activate한다 — 인스턴스 전체 재시작보다 영향 범위가 좁고 감사 로그가 남는다.
+
+메커니즘에 대한 일반화된 설명(n8n 자체의 구조적 이유, "이미 등록된 cron" 판정 로직, 다른 프로젝트에도 적용 가능한 검증된 배포 절차)은 프로젝트 밖 공용 지식 문서 `knowledge/n8n/n8n-deployment-and-trigger-lifecycle.md`에 있고, 이번 프로젝트에서 이 결론에 도달한 조사 과정과 E2E 검증 결과는 `SESSION_SUMMARY.md`(2026-08-05, 2026-08-06)에 있다.
+
+### 8.6 Gemini 호출 — 기사 단위 순차 처리와 재시도
+
+**배경**: 회사당 여러 기사를 한 번의 Gemini 노드 실행에 배치로 넘기면, n8n의 노드 재시도 기능(`retryOnFail`)이 노드 출력의 첫 번째 아이템만 검사해 재시도 여부를 판단하는 구조적 특성 때문에, 배치 중간이나 끝에서 발생한 429(rate limit)는 재시도가 전혀 발동하지 않는다. 실제 프로덕션 장애(2026-08-05)에서 이 문제로 여러 회사가 재시도 없이 바로 실패 처리됨.
+
+**해결**: Gemini 호출을 회사당 배치가 아니라 **기사 1건 단위 순차 루프**로 재구성했다. `Split Out High Importance`(기사 1건=1아이템, 기존과 동일) 다음에 `Loop Over Articles`(`batchSize: 1`)를 두어 Gemini 노드가 항상 정확히 기사 1건만 처리하도록 하고, 각 호출 뒤 `Wait Between Gemini Calls`(1초)로 다음 호출까지 간격을 둔다. 이렇게 하면 노드 재시도 기능이 검사하는 "첫 번째 아이템"이 항상 그 순간 처리 중인 유일한 기사가 되어, 어떤 위치의 실패든 정확히 재시도된다(최대 3회, 15초 간격). 루프가 끝나면(done) 기사별 성공/실패 결과가 자동으로 누적되어 배치 처리 시절과 동일한 형태로 이후 단계(`Count Analyzed Success` 이하)에 전달되며, 이 이후 단계는 전혀 수정하지 않았다.
+
+기사 단위 루프가 회사 Loop 안에 중첩되는 구조라, 루프의 내부 상태가 회사가 바뀔 때 정확히 초기화되어야 한다. 이 초기화 신호는 다른 노드의 출력 구조에 암묵적으로 의존하지 않도록, `Prepare Importance Routing`이 원본 기사 아이템에 직접 `__loop_reset: true`라는 전용 marker를 찍어 판단 기준으로 삼는다(다른 어떤 하위 단계에도 이 필드는 남지 않음). 조사와 검증 과정 전체는 `SESSION_SUMMARY.md`(2026-08-05, "Gemini Rate Limit 대응" 절)에 있다.
 
 ## 9. AI Prompt와 출력 스키마
 
@@ -330,3 +381,15 @@ n8n Gemini 노드는 별도의 구조화된 출력(response_schema) 옵션을 �
 - **Company 단위 오류 격리 (8.2절)** — 관련 기사 0건, 신규 기사 0건, 고중요도 기사 0건, API 실패를 모두 정상적으로 발생 가능한 케이스로 취급해, 회사당 정확히 1개의 결과가 항상 남도록 설계했다. Run_Log와 Telegram 요약이 실제 처리 대상 수와 항상 일치하도록 보장하는 것이 목적이다.
 - **Fork + Merge 기반 저장 무결성 (8.2절)** — Google Sheets Append 노드가 매핑되지 않은 필드를 유실시키는 문제를 저장 직전 원본 보존 후 재결합으로 해결하고, 불일치 시 조용히 넘어가지 않고 명시적 에러를 발생시킨다.
 - **Run_Log 무결성 우선 판정 (5.4절)** — company_total과 (company_completed + company_failed)의 합이 어긋나면 PARTIAL_SUCCESS로 완화하지 않고 FAILED로 판정해, 집계 누락을 조용히 넘기지 않는다.
+- **프로덕션 배포는 CLI(`import`/`publish`)가 아니라 REST API activate로 트리거를 등록한다 (8.5절)** — CLI는 별도 프로세스라 재시작 없이는 살아있는 트리거 레지스트리에 반영되지 않고, 재시작을 사람이 잊는 사고가 반복됐다. REST API는 재시작 없이 즉시·감사 가능하게 등록되는 것을 실측으로 확인해 기본 절차로 채택했다.
+- **Gemini 호출은 회사당 배치가 아니라 기사 단위 순차 처리로 재시도를 보장한다 (8.6절)** — n8n `retryOnFail`이 노드 출력의 첫 번째 아이템만 검사하는 구조적 한계 때문에, 배치 처리에서는 배치 중간 위치의 실패에 재시도가 발동하지 않는다는 것을 실제 429 장애로 확인했다. 기사 1건 = 노드 실행 1회로 재구성해 이 문제를 근본적으로 제거했다.
+- **Loop의 상태 초기화 신호는 명시적 marker 필드로만 판단한다 (8.6절)** — 다른 노드의 출력 필드 존재 여부 같은 암묵적 신호에 의존하면, 그 노드가 나중에 바뀔 때 조용히 재발할 수 있다는 것을 실제 회귀로 확인했다. `__loop_reset` 같은 전용 marker를 상류 노드가 직접 찍어주는 방식을 표준으로 채택했다.
+- **REST API deactivate를 CLI import보다 먼저 호출한다 (8.5절)** — `CLI import → REST activate` 순서만으로는 트리거 설정이 이전과 동일할 때 라이브 등록이 조용히 스킵될 수 있음을 실제 무인 실행 실패로 확인했다. deactivate를 먼저 호출해 라이브 등록을 실제로 해제한 뒤 재등록하는 순서로 확정했다.
+- **콘텐츠 변경이 없는 트리거 재무장은 인스턴스 전체 재시작이 아니라 대상 워크플로우 전용 REST deactivate/activate로 처리한다 (8.4, 8.5절)** — 영향 범위가 좁고 감사 로그가 남으며, 절전 복귀 후 매일 반복되는 rearm에도 안전하게 재사용할 수 있다.
+
+### Operating Environment (Windows Host)
+
+- **Modern Standby(S0) Wake Timer는 운영에서 사용하지 않는다** — 실측 결과(`powercfg /waketimers`, SleepStudy) 이 하드웨어에서 Task Scheduler 기반 예약 기상이 구조적으로 신뢰할 수 없음을 확인했다 (8.4절).
+- **Windows Task Scheduler + BIOS RTC Wake + S4(Hibernate)를 운영 방식으로 채택한다** — 동일 하드웨어에서 S4+RTC Wake는 실측으로 신뢰성이 확인되어 무인 기상 메커니즘으로 채택했다 (8.4절).
+- **Bridge Task는 Windows Host에서 실행하며 `SetThreadExecutionState()`를 사용해 n8n 실행이 끝날 것으로 예상되는 시간 동안만 절전을 방지한다** — 목표 시각 도달 시 즉시 플래그를 해제해 불필요하게 절전을 막지 않고, 이후에는 기존 절전 정책으로 정상 복귀한다 (8.4절).
+- **Docker, WSL2, n8n은 Hibernate Resume 후 기존 세션을 그대로 복원하는 구조를 그대로 활용한다** — Hibernate는 절전 진입 직전의 전체 메모리 이미지를 복원하는 방식이라, 별도의 재시작 로직 없이도 Docker Desktop/WSL2/n8n 컨테이너가 실행 중이던 상태 그대로 복구됨을 실측으로 확인했다 (8.4절).

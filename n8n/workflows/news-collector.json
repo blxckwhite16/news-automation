@@ -1,6 +1,6 @@
 [
   {
-    "updatedAt": "2026-08-01T15:13:50.942Z",
+    "updatedAt": "2026-08-05T07:05:51.464Z",
     "createdAt": "2026-07-31T05:19:53.876Z",
     "name": "News Collector",
     "description": null,
@@ -69,8 +69,8 @@
         "name": "Get Company List",
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         }
       },
@@ -82,8 +82,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -688,
-          240
+          -480,
+          272
         ],
         "id": "425bbbec-c12b-4448-bcbf-6163d987a613",
         "name": "Clean Article Data"
@@ -96,7 +96,7 @@
         "typeVersion": 2,
         "position": [
           144,
-          528
+          512
         ],
         "id": "f99a5d5c-75c5-438b-8afb-c43489dc2de0",
         "name": "Calculate News Importance"
@@ -108,8 +108,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -256,
-          240
+          -48,
+          272
         ],
         "id": "45f9c254-ee0b-4e62-8fe1-6d64bd43fb77",
         "name": "Filter Relevant    Articles"
@@ -144,8 +144,8 @@
         "alwaysOutputData": true,
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         }
       },
@@ -156,8 +156,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          144,
-          256
+          352,
+          288
         ],
         "id": "3ba6dcd8-55cb-4200-9fa9-9f51b72baff9",
         "name": "Check New Articles"
@@ -295,15 +295,15 @@
         "type": "n8n-nodes-base.googleSheets",
         "typeVersion": 4.7,
         "position": [
-          -464,
-          464
+          -480,
+          448
         ],
         "id": "a324abd7-cf31-4a8a-8a2f-9912880390b3",
         "name": "Save Raw News",
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         },
         "onError": "continueErrorOutput"
@@ -328,8 +328,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -480,
-          240
+          -272,
+          272
         ],
         "id": "953cd766-efbf-42b8-9a1f-fd0e54ce99b7",
         "name": "Deduplicate Current Run"
@@ -342,7 +342,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -464,
+          -160,
           784
         ],
         "id": "ae4acd2e-48f1-45cc-b075-0b06e466167f",
@@ -521,15 +521,15 @@
         "type": "n8n-nodes-base.googleSheets",
         "typeVersion": 4.7,
         "position": [
-          -464,
+          -480,
           944
         ],
         "id": "42e9bcf9-0ebb-444c-b3de-999157c5cb50",
         "name": "Save  AI_Analysis ",
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         },
         "onError": "continueErrorOutput"
@@ -595,8 +595,8 @@
         "name": "Fetch Naver News",
         "credentials": {
           "httpCustomAuth": {
-            "id": "NaverApiHeaderAuth1",
-            "name": "NAVER Search API Header Auth"
+            "id": "YOUR_NAVER_API_CREDENTIAL_ID",
+            "name": "YOUR_NAVER_API_CREDENTIAL_NAME"
           }
         },
         "onError": "continueErrorOutput"
@@ -622,27 +622,30 @@
         "type": "@n8n/n8n-nodes-langchain.googleGemini",
         "typeVersion": 1.2,
         "position": [
-          -800,
+          -480,
           784
         ],
         "id": "fa84f2d2-1e9a-41ec-ba89-6437e4351246",
         "name": "Analyze News with Gemini",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 15000,
         "credentials": {
           "googlePalmApi": {
-            "id": "AcuVud7VrO0Db3s5",
-            "name": "Google Gemini(PaLM) Api account"
+            "id": "YOUR_GEMINI_CREDENTIAL_ID",
+            "name": "YOUR_GEMINI_CREDENTIAL_NAME"
           }
         },
         "onError": "continueRegularOutput"
       },
       {
         "parameters": {
-          "jsCode": "const items = $input.all();\nconst first = items[0]?.json || {};\n\nlet articleAnalysisSuccess = first.article_analysis_success ?? 0;\nconst articleRelevant = first.article_relevant ?? 0;\nconst articleDuplicate = first.article_duplicate ?? 0;\nconst articleSaved = first.article_saved ?? 0;\nconst articleAnalyzed = first.article_analyzed ?? first.__analyzed_total ?? 0;\n\nlet resultType = first.result_type;\n\nif (!resultType) {\n  articleAnalysisSuccess = items.length;\n  resultType = 'COMPLETED';\n}\n\nconst articleFailed = Math.max(0, articleAnalyzed - articleAnalysisSuccess);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: resultType,\n\n      company_name: first.company_name,\n      ticker: first.ticker,\n      run_started_at: $execution.customData.get('run_started_at') || null,\n\n      company_failed: first.company_failed ?? 0,\n\n      article_relevant: articleRelevant,\n      article_duplicate: articleDuplicate,\n      article_saved: articleSaved,\n      article_analyzed: articleAnalyzed,\n      article_analysis_success: articleAnalysisSuccess,\n      article_failed: articleFailed,\n\n      error_message: first.error_message ?? null\n    }\n  }\n];"
+          "jsCode": "const items = $input.all();\nconst first = items[0]?.json || {};\n\nlet articleAnalysisSuccess = first.article_analysis_success ?? 0;\nconst articleRelevant = first.article_relevant ?? 0;\nconst articleDuplicate = first.article_duplicate ?? 0;\nconst articleSaved = first.article_saved ?? 0;\nconst articleAnalyzed = first.article_analyzed ?? first.__analyzed_total ?? 0;\n\nlet resultType = first.result_type;\n\nif (!resultType) {\n  articleAnalysisSuccess = items.length;\n  resultType = 'COMPLETED';\n}\n\nconst articleFailed = Math.max(0, articleAnalyzed - articleAnalysisSuccess);\n\nconst errorMessage = first.error_message\n  ?? (articleFailed > 0 ? first.__partial_failure_sample : null)\n  ?? null;\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: resultType,\n\n      company_name: first.company_name,\n      ticker: first.ticker,\n      run_started_at: $execution.customData.get('run_started_at') || null,\n\n      company_failed: first.company_failed ?? 0,\n\n      article_relevant: articleRelevant,\n      article_duplicate: articleDuplicate,\n      article_saved: articleSaved,\n      article_analyzed: articleAnalyzed,\n      article_analysis_success: articleAnalysisSuccess,\n      article_failed: articleFailed,\n\n      error_message: errorMessage\n    }\n  }\n];"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          752,
+          944,
           1216
         ],
         "id": "f82503fa-cd73-4db6-a616-2cab8030e4ef",
@@ -650,12 +653,12 @@
       },
       {
         "parameters": {
-          "jsCode": "const items = $input.all();\nconst valid = items.filter(i => !i.json.is_control_item);\nconst first = items[0]?.json || {};\n\nif (valid.length === 0) {\n  return [\n    {\n      json: {\n        result_type: \"COMPLETED\",\n        company_name: first.company_name,\n        ticker: first.ticker,\n        company_failed: 0,\n        article_analyzed: items.length,\n        article_analysis_success: 0,\n        error_message: first.error_message || null,\n      },\n    },\n  ];\n}\n\nreturn valid.map((v) => ({\n  json: {\n    ...v.json,\n    __analyzed_total: items.length,\n  },\n}));"
+          "jsCode": "const items = $input.all();\nconst valid = items.filter(i => !i.json.is_control_item);\nconst first = items[0]?.json || {};\n\nif (valid.length === 0) {\n  return [\n    {\n      json: {\n        result_type: \"COMPLETED\",\n        company_name: first.company_name,\n        ticker: first.ticker,\n        company_failed: 0,\n        article_analyzed: items.length,\n        article_analysis_success: \"0\",\n        error_message: first.error_message || null,\n      },\n    },\n  ];\n}\n\nconst failedSample = items.find((i) => i.json.is_control_item)?.json?.error_message || null;\n\nreturn valid.map((v) => ({\n  json: {\n    ...v.json,\n    __analyzed_total: items.length,\n    __partial_failure_sample: failedSample,\n  },\n}));"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -256,
+          64,
           784
         ],
         "id": "4b71be24-a8ad-4fd3-af00-be3439aab684",
@@ -689,7 +692,7 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          -48,
+          272,
           784
         ],
         "id": "bcb28538-86cd-4d38-924d-4a0ff9663ccc",
@@ -723,8 +726,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          -48,
-          240
+          160,
+          272
         ],
         "id": "d2fbde7b-bc54-426a-a2af-d19517bda222",
         "name": "IF: No Relevant Articles?"
@@ -757,21 +760,21 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          336,
-          256
+          544,
+          288
         ],
         "id": "fbfed791-9d03-4d4c-b75d-ba3eca1e8bde",
         "name": "IF: No New Articles?"
       },
       {
         "parameters": {
-          "jsCode": "const items = $input.all();\n\nconst threshold = 5;\n\nconst high = items.filter(\n  i => (i.json.importance_score || 0) > threshold\n);\n\nconst low = items.filter(\n  i => (i.json.importance_score || 0) <= threshold\n);\n\nreturn [{\n  json: {\n    company_name: items[0]?.json?.company_name,\n    ticker: items[0]?.json?.ticker,\n\n    saved_count: items.length,\n    low_importance_count: low.length,\n\n    article_relevant:\n      items[0]?.json?.article_relevant ?? 0,\n\n    article_duplicate:\n      items[0]?.json?.article_duplicate ?? 0,\n\n    high: high.map(i => ({\n      ...i.json,\n      article_saved: items.length,\n      article_analyzed: high.length\n    })),\n\n    result_type: 'NO_HIGH_IMPORTANCE_ARTICLES',\n\n    company_failed: 0,\n    article_saved: items.length,\n    article_analyzed: 0,\n    article_analysis_success: 0,\n    article_failed: 0,\n    error_message: null\n  }\n}];"
+          "jsCode": "const items = $input.all();\n\nconst threshold = 5;\n\nconst high = items.filter(\n  i => (i.json.importance_score || 0) > threshold\n);\n\nconst low = items.filter(\n  i => (i.json.importance_score || 0) <= threshold\n);\n\nreturn [{\n  json: {\n    company_name: items[0]?.json?.company_name,\n    ticker: items[0]?.json?.ticker,\n\n    saved_count: items.length,\n    low_importance_count: low.length,\n\n    article_relevant:\n      items[0]?.json?.article_relevant ?? 0,\n\n    article_duplicate:\n      items[0]?.json?.article_duplicate ?? 0,\n\n    high: high.map(i => ({\n      ...i.json,\n      article_saved: items.length,\n      article_analyzed: high.length,\n      __loop_reset: true\n    })),\n\n    result_type: 'NO_HIGH_IMPORTANCE_ARTICLES',\n\n    company_failed: 0,\n    article_saved: items.length,\n    article_analyzed: 0,\n    article_analysis_success: 0,\n    article_failed: 0,\n    error_message: null\n  }\n}];"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          352,
-          608
+          336,
+          512
         ],
         "id": "f981d234-f03b-4e2f-98f1-7c3baea1c512",
         "name": "Prepare Importance Routing"
@@ -803,8 +806,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          544,
-          608
+          528,
+          512
         ],
         "id": "5a7edcf8-7108-4861-842c-1525549a4b84",
         "name": "IF: Has High Importance?"
@@ -817,8 +820,8 @@
         "type": "n8n-nodes-base.splitOut",
         "typeVersion": 1,
         "position": [
-          752,
-          592
+          736,
+          496
         ],
         "id": "b7119125-de8c-4f45-b42c-98a9d86e2434",
         "name": "Split Out High Importance"
@@ -830,22 +833,22 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          -112
+          -1184,
+          -288
         ],
         "id": "8167c25c-73f5-4967-a944-88a39ccbc692",
         "name": "Sticky Note"
       },
       {
         "parameters": {
-          "content": "## STEP 2. News Collection\n\n• Search NAVER News\n• Collect search results",
+          "content": "\n## STEP 2. News Collection\n\n• Search NAVER News\n• Collect search results",
           "color": 2
         },
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          64
+          -1184,
+          -112
         ],
         "id": "9f42755f-a84a-4c47-8779-f6cfd8a1675e",
         "name": "Sticky Note1"
@@ -858,8 +861,8 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          240
+          -1184,
+          64
         ],
         "id": "5ed31fac-4331-4c4d-b9ed-671f30ff9ef6",
         "name": "Sticky Note2"
@@ -872,8 +875,8 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          416
+          -1184,
+          240
         ],
         "id": "b668d8f0-8c8b-4bd0-ac1c-4815a5461ec7",
         "name": "Sticky Note3"
@@ -886,8 +889,8 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          592
+          -1184,
+          416
         ],
         "id": "dd1596a7-2822-411f-8be9-d853d4717b09",
         "name": "Sticky Note4"
@@ -899,8 +902,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -464,
-          624
+          -480,
+          608
         ],
         "id": "9b29bca2-e19b-4a06-9d16-812da721b6c6",
         "name": "Keep Raw News Context"
@@ -915,7 +918,7 @@
         "typeVersion": 3.2,
         "position": [
           -256,
-          528
+          512
         ],
         "id": "68a305dd-0bf3-44d6-af9d-b99882addad9",
         "name": "Merge Raw News Context"
@@ -928,7 +931,7 @@
         "typeVersion": 2,
         "position": [
           -48,
-          528
+          512
         ],
         "id": "df69ee1f-8ed6-41de-a856-c5397f51902f",
         "name": "Validate Raw News Merge"
@@ -940,7 +943,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -464,
+          -480,
           1104
         ],
         "id": "fefeb463-a74c-4e3c-b792-a33d467210b8",
@@ -981,8 +984,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          448,
-          1216
+          560,
+          1200
         ],
         "id": "00d2118b-1b26-4251-a496-9d30be857ab8",
         "name": "Tag: Save AI_Analysis Failed"
@@ -994,8 +997,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          -32,
-          1216
+          64,
+          1200
         ],
         "id": "62797a27-bee7-4b84-957d-5c1b3f64f2a2",
         "name": "Tag: Company Failed"
@@ -1007,8 +1010,8 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          208,
-          1216
+          304,
+          1200
         ],
         "id": "tagFetchNaverFailed",
         "name": "Tag: Fetch Naver News Failed"
@@ -1022,8 +1025,8 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          768
+          -1184,
+          592
         ],
         "id": "c7081835-d4ba-414c-9f72-66166e285a94",
         "name": "Sticky Note6"
@@ -1225,8 +1228,8 @@
         "name": "Save Run_Log",
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         }
       },
@@ -1241,7 +1244,7 @@
         "type": "n8n-nodes-base.telegram",
         "typeVersion": 1.2,
         "position": [
-          336,
+          528,
           -128
         ],
         "id": "sendTelegramMessage",
@@ -1249,8 +1252,8 @@
         "webhookId": "e2db1622-e128-4229-910e-8d7517f458ee",
         "credentials": {
           "telegramApi": {
-            "id": "cB2VgfLiBclUzXT8",
-            "name": "Telegram account"
+            "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+            "name": "YOUR_TELEGRAM_CREDENTIAL_NAME"
           }
         }
       },
@@ -1279,8 +1282,8 @@
         "name": "Fetch Run Articles",
         "credentials": {
           "googleApi": {
-            "id": "Fow05007WEhwEVex",
-            "name": "Google Sheets account"
+            "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+            "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
           }
         }
       },
@@ -1291,7 +1294,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          144,
+          336,
           -128
         ],
         "id": "buildTelegramMessage",
@@ -1305,8 +1308,8 @@
         "type": "n8n-nodes-base.stickyNote",
         "typeVersion": 1,
         "position": [
-          -1152,
-          944
+          -1184,
+          768
         ],
         "id": "16c66329-dd1e-46c1-8191-dac7b39ce774",
         "name": "Sticky Note5"
@@ -1318,11 +1321,40 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          192,
-          -400
+          144,
+          -128
         ],
         "id": "prepareTelegramDataProd",
         "name": "Prepare Telegram Data"
+      },
+      {
+        "parameters": {
+          "options": {
+            "reset": "={{ $json.__loop_reset === true }}"
+          }
+        },
+        "id": "efefa2cb-bbe4-4d93-a8e6-51015e4a5721",
+        "name": "Loop Over Articles",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          928,
+          496
+        ]
+      },
+      {
+        "parameters": {
+          "amount": 1
+        },
+        "id": "40fda47b-cf36-4b51-a649-571fe0c6ffc0",
+        "name": "Wait Between Gemini Calls",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          528,
+          720
+        ],
+        "webhookId": "cdd98294-293f-4948-9bdd-6ed8f120652a"
       }
     ],
     "connections": {
@@ -1464,7 +1496,7 @@
         "main": [
           [
             {
-              "node": "Count Analyzed Success",
+              "node": "Wait Between Gemini Calls",
               "type": "main",
               "index": 0
             }
@@ -1637,7 +1669,7 @@
         "main": [
           [
             {
-              "node": "Analyze News with Gemini",
+              "node": "Loop Over Articles",
               "type": "main",
               "index": 0
             }
@@ -1802,6 +1834,35 @@
             }
           ]
         ]
+      },
+      "Loop Over Articles": {
+        "main": [
+          [
+            {
+              "node": "Count Analyzed Success",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Analyze News with Gemini",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait Between Gemini Calls": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Articles",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
     "settings": {
@@ -1809,7 +1870,16 @@
       "binaryMode": "separate",
       "availableInMCP": false
     },
-    "staticData": null,
+    "staticData": {
+      "node:Schedule Trigger": {
+        "recurrenceRules": [
+          null
+        ],
+        "recurrenceRuleSignatures": [
+          null
+        ]
+      }
+    },
     "meta": {
       "templateCredsSetupCompleted": true
     },

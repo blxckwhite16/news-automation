@@ -8,9 +8,9 @@
 
 아래는 실제 실행된 프로덕션 워크플로우의 n8n 캔버스입니다. 초록 체크는 정상 완료된 노드, 각 화살표의 숫자는 해당 구간을 실제로 통과한 아이템 수입니다 — 다이어그램이 아니라 실행 결과 스크린샷입니다.
 
-![워크플로우 실행 화면](./docs/n8n-workflow-map.png)
+![워크플로우 실행 화면](./docs/n8n-workflow-map_v1.1.0.png)
 
-48개 노드로 구성되어 있으며, 단순 수집을 넘어 회사 단위 오류 격리·저장 데이터 무결성·실행 로그까지 포함합니다.
+50개 노드로 구성되어 있으며, 단순 수집을 넘어 회사 단위 오류 격리·저장 데이터 무결성·실행 로그·기사 단위 재시도까지 포함합니다.
 
 ## 주요 기능
 
@@ -30,6 +30,8 @@
 - **Fork + Merge 기반 데이터 무결성** — 저장 단계의 필드 유실 문제를 원본 보존 + 재결합으로 해결, 불일치 시 명시적 에러 발생
 - **Run_Log 무결성 판정** — 집계가 어긋나면 조용히 넘어가지 않고 FAILED로 판정
 - **Telegram 일일 요약** — 산업별 그룹화와 Priority 상위 기사 발췌로 실행 결과 요약 발송
+- **기사 단위 순차 재시도** — Gemini API 호출을 회사당 배치가 아니라 기사 1건 단위로 순차 처리해, rate limit 발생 시 실패한 기사만 정확히 재시도되도록 보장
+- **무인 실행 신뢰성** — 로컬 환경(Windows 절전/최대절전)에서도 재시작 없이 안전하게 배포하고 트리거를 재무장하는 운영 구조
 
 각 설계의 배경과 근거는 [docs/design.md](./docs/design.md) 11절 "설계 결정"을 참고하세요.
 
@@ -98,19 +100,22 @@ news-automation/
 │   ├── design.md
 │   ├── TASKS.md
 │   ├── SESSION_SUMMARY.md
-│   └── n8n-workflow-map.png
+│   └── n8n-workflow-map_v1.1.0.png
 ├── n8n/
 │   └── workflows/
 │       └── news-collector.json
 ├── prompts/
 │   └── news-analysis-prompt.md
+├── scripts/
+│   ├── deploy-production-workflow.sh   # 프로덕션 배포 전용 wrapper (참고용 — 환경 종속 경로 포함)
+│   └── rearm-news-collector-trigger.sh # 절전 복귀 후 트리거 재무장 스크립트 (참고용)
 └── seed/
     └── companies_seed.csv
 ```
 
 ## 현재 상태 및 향후 개선
 
-핵심 파이프라인(뉴스 수집 → 필터링/신규 판별 → 원본·AI 분석 저장 → 오류 격리 → Run_Log 기록 → Telegram 알림)이 모두 구현되어 있습니다. 2026-08-02부터 워크플로우를 활성화(active=true)해 매일 자동 실행 중이며, 현재 1주일 무인 실행 모니터링 기간을 거치고 있습니다.
+핵심 파이프라인(뉴스 수집 → 필터링/신규 판별 → 원본·AI 분석 저장 → 오류 격리 → Run_Log 기록 → Telegram 알림)이 모두 구현되어 매일 자동 실행 중입니다. 로컬 환경(Windows 절전 → 자동 기상 → 컨테이너 준비 → 트리거 재무장 → 실행 → 알림 수신)까지 이어지는 전체 무인 실행 경로를 실제로 종단간(E2E) 검증했습니다 — 설계 근거는 [docs/design.md](./docs/design.md) 8.4·8.5절을 참고하세요.
 
 향후 개선 항목(Telegram 중복 기사 노출 방지, ticker 저장 형식 수정, 다중 뉴스 소스 확장 등) 전체 목록은 [docs/TASKS.md](./docs/TASKS.md)를 참고하세요.
 
