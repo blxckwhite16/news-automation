@@ -8,7 +8,7 @@
 
 아래는 실제 실행된 프로덕션 워크플로우의 n8n 캔버스입니다. 초록 체크는 정상 완료된 노드, 각 화살표의 숫자는 해당 구간을 실제로 통과한 아이템 수입니다 — 다이어그램이 아니라 실행 결과 스크린샷입니다.
 
-![워크플로우 실행 화면](./docs/n8n-workflow-map_v1.1.0.png)
+![News Automation Workflow v1.1.0](docs/n8n-workflow-map_v1.1.0.png)
 
 50개 노드로 구성되어 있으며, 단순 수집을 넘어 회사 단위 오류 격리·저장 데이터 무결성·실행 로그·기사 단위 재시도까지 포함합니다.
 
@@ -99,7 +99,6 @@ news-automation/
 ├── docs/
 │   ├── design.md
 │   ├── TASKS.md
-│   ├── SESSION_SUMMARY.md
 │   └── n8n-workflow-map_v1.1.0.png
 ├── n8n/
 │   └── workflows/
@@ -107,7 +106,7 @@ news-automation/
 ├── prompts/
 │   └── news-analysis-prompt.md
 ├── scripts/
-│   ├── deploy-production-workflow.sh   # 프로덕션 배포 전용 wrapper (참고용 — 환경 종속 경로 포함)
+│   ├── deploy-production-workflow.sh   # 프로덕션 배포 전용 wrapper (참고용 — $HOME 기준 기본 경로, 환경변수로 재정의 가능)
 │   └── rearm-news-collector-trigger.sh # 절전 복귀 후 트리거 재무장 스크립트 (참고용)
 └── seed/
     └── companies_seed.csv
