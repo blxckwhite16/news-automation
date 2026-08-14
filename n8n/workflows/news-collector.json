@@ -1,6 +1,6 @@
 [
   {
-    "updatedAt": "2026-08-05T07:05:51.464Z",
+    "updatedAt": "2026-08-06T08:23:49.010Z",
     "createdAt": "2026-07-31T05:19:53.876Z",
     "name": "News Collector",
     "description": null,
@@ -979,7 +979,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const errorItems = $input.all();\n\nlet company;\n\ntry {\n  company = $('Loop Over Items').item.json;\n} catch (error) {\n  throw new Error(\n    `Tag: Save AI_Analysis Failed에서 현재 회사 정보를 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'COMPLETED',\n\n      company_name: company.company_name,\n      ticker: company.ticker,\n\n      company_failed: 0,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: errorItems.length,\n\n      error_message:\n        `Save AI_Analysis failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
+          "jsCode": "const errorItems = $input.all();\n\nlet company = {};\n\ntry {\n  company = $('Loop Over Items').first().json;\n} catch (error) {\n  // Loop Over Items 자체 조회까지 실패하는 극단적 경우를 대비한 방어 코드.\n  // 이 경우에도 회사 단위 오류 격리가 깨지지 않도록 예외를 던지지 않고 계속 진행한다.\n}\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'COMPLETED',\n\n      company_name: company.company_name,\n      ticker: company.ticker,\n\n      company_failed: 0,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: errorItems.length,\n\n      error_message:\n        `Save AI_Analysis failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
@@ -992,7 +992,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const errorItems = $input.all();\n\nlet company;\n\ntry {\n  company = $('Loop Over Items').item.json;\n} catch (error) {\n  throw new Error(\n    `Tag: Company Failed에서 현재 회사 정보를 읽을 수 없습니다 - ${error.message}`\n  );\n}\n\nconst firstErrorItem = errorItems[0]?.json || {};\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'FAILED',\n\n      company_name:\n        firstErrorItem.company_name ||\n        company.company_name,\n\n      ticker:\n        firstErrorItem.ticker ||\n        company.ticker,\n\n      company_failed: 1,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: 0,\n\n      error_message:\n        `Save Raw News failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
+          "jsCode": "const errorItems = $input.all();\n\nlet company = {};\n\ntry {\n  company = $('Loop Over Items').first().json;\n} catch (error) {\n  // Loop Over Items 자체 조회까지 실패하는 극단적 경우를 대비한 방어 코드.\n  // 이 경우에도 회사 단위 오류 격리가 깨지지 않도록 예외를 던지지 않고 계속 진행한다.\n}\n\nconst firstErrorItem = errorItems[0]?.json || {};\n\nconst errorMessages = errorItems\n  .map((item) => {\n    const value =\n      item.json?.error?.message ??\n      item.json?.error ??\n      item.json?.message ??\n      'unknown error';\n\n    return typeof value === 'string'\n      ? value\n      : JSON.stringify(value);\n  })\n  .filter(Boolean);\n\nreturn [\n  {\n    json: {\n      is_control_item: true,\n      result_type: 'FAILED',\n\n      company_name:\n        firstErrorItem.company_name ||\n        company.company_name,\n\n      ticker:\n        firstErrorItem.ticker ||\n        company.ticker,\n\n      company_failed: 1,\n\n      article_relevant: 0,\n      article_duplicate: 0,\n      article_saved: 0,\n      article_analyzed: 0,\n      article_analysis_success: 0,\n      article_failed: 0,\n\n      error_message:\n        `Save Raw News failed: ${errorMessages.join(' | ')}`\n    }\n  }\n];"
         },
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
